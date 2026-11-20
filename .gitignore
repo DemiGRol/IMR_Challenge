@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+node_modules/
+coverage/
+.next/
+dist/
+__pycache__/
+.agents/runs/
+private/
