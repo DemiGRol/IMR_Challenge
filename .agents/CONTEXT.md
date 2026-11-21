@@ -7,6 +7,6 @@ Disponibilidad horaria personal: ~10–15 h totales hasta el 27/11/2026. Presupu
 Preguntas IMR usadas: 0 enviadas (Q-01 registrada como propuesta en `docs/brief/questions.md`).
 Decisiones aprobadas: T-01, T-02, T-03 y T-04 verificados; Git Flow activo (`master` + `develop` + `feat/mvp`); delegación paralela aprobada para T-05.
 Bloqueos: ninguno.
-Último incremento verificado: MVP vertical T-05 implementado en `feat/mvp` (`tsc --noEmit` 0 errores, `next build` OK).
-Siguiente paso propuesto: T-06 (prueba visual en navegador local con `npm run dev` + revisión independiente de seguridad/calidad por `quality-validator`), luego merge a `develop` y despliegue en Vercel (T-07).
+Último incremento verificado: T-05 y T-06 verificados (`tsc --noEmit` 0 errores, `next build` OK, auditorías `DEL-06..09` aplicadas, prueba en vivo con caso robusto 55s OK).
+Siguiente paso propuesto: T-07 (merge `feat/mvp → develop → master` y despliegue en Vercel Hobby) y T-08 (preparación de defensa de 30 min).
 Actualizar con decisiones, links, bloqueos y hechos duraderos; no volcar el chat completo.

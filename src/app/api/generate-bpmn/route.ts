@@ -6,7 +6,10 @@ import { LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
+
+const TOTAL_BUDGET_MS = 240_000;
+const MIN_REPAIR_BUDGET_MS = 30_000;
 
 const RequestSchema = z.object({
   processDescription: z
@@ -48,17 +51,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const startedAt = performance.now();
+
   try {
-    const adapter = new ResilientLlmAdapter([new VertexAiProvider()]);
-    const result = await adapter.generate({
+    const adapter = new ResilientLlmAdapter([new VertexAiProvider()], 180_000);
+    let result = await adapter.generate({
       processDescription: parsed.data.processDescription,
     });
-    const layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
+
+    let layoutedXml: string;
+    let attempts = 1;
+    let repaired = false;
+
+    try {
+      layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
+    } catch (validationErr) {
+      if (!(validationErr instanceof BpmnValidationError)) throw validationErr;
+
+      const remainingMs = TOTAL_BUDGET_MS - (performance.now() - startedAt);
+      if (remainingMs < MIN_REPAIR_BUDGET_MS) {
+        throw validationErr;
+      }
+
+      console.warn('[generate-bpmn] Validation failed, attempting single repair', {
+        reason: validationErr.message,
+        remainingMs: Math.round(remainingMs),
+      });
+
+      attempts = 2;
+      repaired = true;
+      result = await adapter.generate(
+        {
+          processDescription: parsed.data.processDescription,
+          repairFeedback: validationErr.message,
+        },
+        Math.round(remainingMs)
+      );
+      layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
+    }
 
     return NextResponse.json({
       bpmnXml: layoutedXml,
       assumptions: result.assumptions,
-      meta: result.meta,
+      meta: {
+        ...result.meta,
+        latencyMs: Math.round(performance.now() - startedAt),
+        attempts,
+        repaired,
+      },
     });
   } catch (err) {
     if (err instanceof BpmnValidationError) {
@@ -67,6 +107,9 @@ export async function POST(req: NextRequest) {
     if (err instanceof LlmServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.statusCode });
     }
+    console.error('[generate-bpmn] Unexpected error', {
+      name: err instanceof Error ? err.name : 'UnknownError',
+    });
     return NextResponse.json(
       { error: 'Ocurrió un error inesperado al generar el diagrama.' },
       { status: 500 }
