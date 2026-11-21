@@ -1,9 +1,9 @@
 # Backlog inicial — propuesta, no aprobado
 | ID | Entregable/tarea | Depende de | Prioridad | Estado | Evidencia |
 |---|---|---|---|---|---|
-| T-01 | Discovery mercado y alcance | — | P0 | en revisión | [market-research.md](discovery/market-research.md) |
-| T-02 | USM, DFD-0, historias y aceptación | T-01 (parcial) | P0 | propuesta | |
-| T-03 | Comparar arquitectura, representación BPMN y LLM; ADR | T-02 (parcial) | P0 | propuesta | |
+| T-01 | Discovery mercado y alcance | — | P0 | aprobado | [market-research.md](discovery/market-research.md) |
+| T-02 | USM, DFD-0, WBS, historias y aceptación | T-01 (parcial) | P0 | aprobado | [IMR.drawio](diagrams/IMR.drawio), [wbs.md](requirements/wbs.md), [user-stories.md](requirements/user-stories.md) |
+| T-03 | Comparar arquitectura, representación BPMN y LLM; ADR | T-02 (parcial) | P0 | aprobado | [ADR-001](architecture/decisions/ADR-001-bpmn-strategy.md), [ADR-002](architecture/decisions/ADR-002-stack-and-hosting.md), [ADR-003](architecture/decisions/ADR-003-llm-provider-adapter.md), [ADR-004](architecture/decisions/ADR-004-no-embeddings-rag-mvp.md) |
 | T-04 | Spike texto → LLM → BPMN editable | Aprobación de spike | P0 | propuesta | |
 | T-05 | Implementar MVP vertical | T-03, T-04 | P0 | propuesta | |
 | T-06 | Validar semántica, errores, UX y seguridad | T-05 | P0 | propuesta | |
