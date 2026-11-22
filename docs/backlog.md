@@ -7,7 +7,7 @@
 | T-04 | Spike texto → LLM → BPMN editable | Aprobación de spike | P0 | verificado | `scripts/spike-bpmn.ts` (3/3 OK), `scripts/spike-vertex.ts` (`gemini-4-hydrogen` en `global`: 18.4s, `moddleWarnings=0`, `hasDI=true`) |
 | T-05 | Implementar MVP vertical | T-03, T-04 | P0 | implementado | Rama `feat/mvp`; `npm run typecheck` OK (0 errores), `npm run build` OK |
 | T-06 | Validar semántica, errores, UX y seguridad | T-05 | P0 | verificado | `DEL-06` (`quality-validator`), `DEL-07..09` (`pro`), prueba en vivo con caso robusto (55s) y [issues-and-lessons.md](defense/issues-and-lessons.md) |
-| T-07 | Entrega reproducible y evidencia | T-05, T-06 | P0 | en curso | `README.md`, `roadmap-future.md`, merge `feat/mvp → develop → master` y despliegue Vercel |
+| T-07 | Entrega reproducible y evidencia | T-05, T-06 | P0 | verificado | `README.md`, `master` (`6d21875`), desplegado en https://imr-challenge.vercel.app/ (Node 26.x, Fluid Compute) |
 | T-08 | Defensa y demo | T-03, T-07 | P0 | propuesta | |
 
 P0: indispensable para entrega o proceso acordado. P1: mejora importante. P2: diferible. Revisar dependencias y estimaciones tras discovery; no declarar fechas intermedias confirmadas.

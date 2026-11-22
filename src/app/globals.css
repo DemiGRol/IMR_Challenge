@@ -507,6 +507,34 @@ textarea:focus-visible {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
 }
 
+.xml-drawer {
+  border-top: 1px solid var(--border);
+  background: #0f172a;
+  color: #e2e8f0;
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+}
+
+.xml-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  font-size: 0.78rem;
+}
+
+.xml-code {
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 @media (max-width: 900px) {
   .app-main {
     flex-direction: column;

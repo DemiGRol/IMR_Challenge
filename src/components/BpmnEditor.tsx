@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import {
+  CodeIcon,
+  CopyIcon,
   DownloadIcon,
   FitIcon,
   PlusIcon,
@@ -76,6 +78,8 @@ export default function BpmnEditor({
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [zoomPct, setZoomPct] = useState(100);
+  const [xmlOpen, setXmlOpen] = useState(false);
+  const [currentXml, setCurrentXml] = useState('');
 
   const syncZoom = useCallback(() => {
     const modeler = modelerRef.current;
@@ -228,6 +232,30 @@ export default function BpmnEditor({
     }
   };
 
+  const handleToggleXml = async () => {
+    const modeler = modelerRef.current;
+    if (!modeler || !hasDiagram) return;
+    if (!xmlOpen) {
+      try {
+        const { xml: latestXml } = await modeler.saveXML({ format: true });
+        setCurrentXml(latestXml || '');
+      } catch {
+        setCurrentXml('No se pudo leer el XML actual del diagrama.');
+      }
+    }
+    setXmlOpen((open) => !open);
+  };
+
+  const handleCopyXml = async () => {
+    if (!currentXml) return;
+    try {
+      await navigator.clipboard.writeText(currentXml);
+      onNotify('XML BPMN copiado al portapapeles.');
+    } catch {
+      onNotify('No se pudo copiar al portapapeles.');
+    }
+  };
+
   const handleDownloadSvg = async () => {
     const modeler = modelerRef.current;
     if (!modeler || !hasDiagram) return;
@@ -271,6 +299,16 @@ export default function BpmnEditor({
         </div>
 
         <div className="toolbar-group">
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => void handleToggleXml()}
+            disabled={!hasDiagram}
+            aria-expanded={xmlOpen}
+          >
+            <CodeIcon />
+            <span>{xmlOpen ? 'Ocultar XML' : 'Ver XML'}</span>
+          </button>
           <button type="button" className="tool-btn" onClick={handleDownloadBpmn} disabled={!hasDiagram}>
             <DownloadIcon />
             <span>.bpmn</span>
@@ -327,6 +365,23 @@ export default function BpmnEditor({
           </div>
         )}
       </div>
+      {xmlOpen && hasDiagram && (
+        <div className="xml-drawer" role="region" aria-label="Inspector de XML BPMN 2.0">
+          <div className="xml-drawer-header">
+            <span className="mono">BPMN 2.0 XML (actual)</span>
+            <div className="toolbar-group">
+              <button type="button" className="tool-btn" onClick={() => void handleCopyXml()}>
+                <CopyIcon />
+                <span>Copiar XML</span>
+              </button>
+              <button type="button" className="tool-btn" onClick={() => setXmlOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+          <pre className="xml-code mono">{currentXml}</pre>
+        </div>
+      )}
     </section>
   );
 }
