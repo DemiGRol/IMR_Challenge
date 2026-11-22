@@ -52,3 +52,4 @@
 - **NFR-01 (Seguridad)**: API keys solo en servidor; validación/sanitización de XML (sin XXE ni HTML arbitrario); entrada tratada como datos.
 - **NFR-02 (Cuota/Abuso)**: Rate limiting por IP, límite de 4.000 caracteres y timeout acotado (20–30 s).
 - **NFR-03 (Extensibilidad)**: Patrón **LLM Adapter** desacoplado con fallback configurable.
+- **NFR-04 (Responsive permanente)**: La interfaz debe ser 100% responsive (escritorio, tablet y móvil) sin desbordes horizontales; todo cambio futuro debe preservar este criterio.
