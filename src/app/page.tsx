@@ -29,6 +29,8 @@ interface GenerateMeta {
 interface StructuredAssumption {
   question: string;
   assumption: string;
+  elementIds?: string[];
+  sourceExcerpt?: string;
 }
 
 interface GenerateResponse {
@@ -39,8 +41,43 @@ interface GenerateResponse {
 }
 
 type DiagramSource = 'empty' | 'ai' | 'blank';
+type SidebarTab = 'description' | 'assumptions';
+
+function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
+  const cleanExcerpt = excerpt?.trim();
+  if (!cleanExcerpt) {
+    return <span>Información omitida en la descripción original.</span>;
+  }
+
+  const lowerFull = fullText.toLowerCase();
+  const lowerExcerpt = cleanExcerpt.toLowerCase();
+  const idx = lowerFull.indexOf(lowerExcerpt);
+
+  if (idx === -1) {
+    return (
+      <span>
+        Referencia: <mark className="excerpt-mark">{cleanExcerpt}</mark>
+      </span>
+    );
+  }
+
+  const start = Math.max(0, idx - 45);
+  const end = Math.min(fullText.length, idx + cleanExcerpt.length + 45);
+  const before = (start > 0 ? '…' : '') + fullText.slice(start, idx);
+  const match = fullText.slice(idx, idx + cleanExcerpt.length);
+  const after = fullText.slice(idx + cleanExcerpt.length, end) + (end < fullText.length ? '…' : '');
+
+  return (
+    <span>
+      {before}
+      <mark className="excerpt-mark">{match}</mark>
+      {after}
+    </span>
+  );
+}
 
 export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<SidebarTab>('description');
   const [description, setDescription] = useState('');
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const [bpmnXml, setBpmnXml] = useState<string | null>(null);
@@ -48,24 +85,58 @@ export default function HomePage() {
   const [diagramSource, setDiagramSource] = useState<DiagramSource>('empty');
   const [isDirty, setIsDirty] = useState(false);
   const [assumptions, setAssumptions] = useState<StructuredAssumption[]>([]);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [assumptionsOpen, setAssumptionsOpen] = useState(true);
+  const [activeAssumptionIdx, setActiveAssumptionIdx] = useState<number | null>(null);
   const [meta, setMeta] = useState<GenerateMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(380);
+  const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const trimmedLength = description.trim().length;
   const isValidLength = trimmedLength >= 10 && trimmedLength <= 4000;
+
+  const highlightedElementIds =
+    activeAssumptionIdx !== null ? assumptions[activeAssumptionIdx]?.elementIds || [] : [];
+
+  const allAssumptionElementIds = assumptions.flatMap((a) => a.elementIds || []);
+
+  const handleElementSelectAssumption = useCallback(
+    (elementId: string) => {
+      const matchIdx = assumptions.findIndex((a) => (a.elementIds || []).includes(elementId));
+      if (matchIdx !== -1) {
+        setActiveTab('assumptions');
+        setSidebarOpen(true);
+        setActiveAssumptionIdx(matchIdx);
+      }
+    },
+    [assumptions]
+  );
+
+  useEffect(() => {
+    if (!isResizing) return;
+    const onMouseMove = (e: MouseEvent) => {
+      const next = Math.max(280, Math.min(620, e.clientX));
+      setSidebarWidth(next);
+    };
+    const onMouseUp = () => setIsResizing(false);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizing]);
 
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 440)}px`;
-  }, [description]);
+  }, [description, activeTab]);
 
   useEffect(() => {
     if (!loading) {
@@ -81,6 +152,24 @@ export default function HomePage() {
     setTimeout(() => setToast((curr) => (curr === message ? null : curr)), 2600);
   }, []);
 
+  const handleEditExcerptInText = (excerpt?: string) => {
+    setActiveTab('description');
+    setTimeout(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const clean = excerpt?.trim();
+      if (clean) {
+        const idx = description.toLowerCase().indexOf(clean.toLowerCase());
+        if (idx !== -1) {
+          el.setSelectionRange(idx, idx + clean.length);
+          return;
+        }
+      }
+      el.setSelectionRange(description.length, description.length);
+    }, 40);
+  };
+
   const confirmOverwriteIfDirty = (): boolean => {
     if (!isDirty) return true;
     return window.confirm(
@@ -89,11 +178,15 @@ export default function HomePage() {
   };
 
   const handleCreateBlank = useCallback(() => {
-    if (isDirty && !window.confirm('Tenés cambios manuales en el diagrama actual. ¿Querés iniciar uno en blanco?')) {
+    if (
+      isDirty &&
+      !window.confirm('Tenés cambios manuales en el diagrama actual. ¿Querés iniciar uno en blanco?')
+    ) {
       return;
     }
     setBpmnXml(null);
     setAssumptions([]);
+    setActiveAssumptionIdx(null);
     setMeta(null);
     setError(null);
     setDiagramSource('blank');
@@ -111,6 +204,7 @@ export default function HomePage() {
 
     setLoading(true);
     setError(null);
+    setActiveAssumptionIdx(null);
 
     try {
       const res = await fetch('/api/generate-bpmn', {
@@ -135,11 +229,14 @@ export default function HomePage() {
         return;
       }
 
+      const nextAssumptions = data.assumptions || [];
       setBpmnXml(data.bpmnXml);
-      setAssumptions(data.assumptions || []);
-      setAssumptionsOpen(true);
+      setAssumptions(nextAssumptions);
       setMeta(data.meta || null);
       setDiagramSource('ai');
+      if (nextAssumptions.length > 0) {
+        setActiveTab('assumptions');
+      }
     } catch {
       setError('Error de conexión con el servidor. Verificá tu red e intentá nuevamente.');
     } finally {
@@ -197,97 +294,155 @@ export default function HomePage() {
       </header>
 
       <main className="app-main">
-        <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
-          <form onSubmit={handleSubmit}>
-            <label htmlFor="process-description" className="field-label">
-              <span>Descripción del proceso</span>
-              <span className="char-count mono">{trimmedLength} / 4.000</span>
-            </label>
-            <textarea
-              ref={textareaRef}
-              id="process-description"
-              className="process-textarea"
-              placeholder="Describí los pasos, decisiones y resultados del proceso de negocio..."
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                setActiveExampleId(null);
-              }}
-              onKeyDown={handleKeyDown}
-              maxLength={4000}
-              disabled={loading}
-            />
-
-            {trimmedLength === 0 && (
-              <div className="examples-group">
-                <span className="examples-label">Ejemplos precargados:</span>
-                <div className="examples-list">
-                  {PROCESS_EXAMPLES.map((example) => (
-                    <button
-                      key={example.id}
-                      type="button"
-                      className={`chip-btn ${activeExampleId === example.id ? 'active' : ''}`}
-                      disabled={loading}
-                      onClick={() => {
-                        setDescription(example.description);
-                        setActiveExampleId(example.id);
-                        setError(null);
-                      }}
-                    >
-                      {example.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
+        <aside
+          className={`sidebar ${sidebarOpen ? '' : 'collapsed'} ${isResizing ? 'resizing' : ''}`}
+          style={sidebarOpen ? { width: `${sidebarWidth}px` } : undefined}
+        >
+          <div className="sidebar-tabs" role="tablist" aria-label="Secciones del panel">
             <button
-              type="submit"
-              className="primary-btn"
-              disabled={loading || !isValidLength}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'description'}
+              className={`tab-btn ${activeTab === 'description' ? 'active' : ''}`}
+              onClick={() => setActiveTab('description')}
             >
-              <SparklesIcon />
-              <span>{loading ? 'Generando diagrama...' : 'Generar diagrama BPMN'}</span>
+              Descripción
             </button>
-            <div className="shortcut-hint">
-              Atajo: <span className="mono">Ctrl + Enter</span> (mín. 10 caracteres)
-            </div>
-          </form>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'assumptions'}
+              className={`tab-btn ${activeTab === 'assumptions' ? 'active' : ''}`}
+              onClick={() => setActiveTab('assumptions')}
+            >
+              Supuestos ({assumptions.length})
+            </button>
+          </div>
 
-          {error && (
-            <div className="status-box status-error" role="alert">
-              <span>{error}</span>
-              <button
-                type="button"
-                className="retry-btn"
-                onClick={() => void generateDiagram()}
-                disabled={loading}
-              >
-                Reintentar
-              </button>
-            </div>
-          )}
+          {activeTab === 'description' ? (
+            <>
+              <form onSubmit={handleSubmit}>
+                <label htmlFor="process-description" className="field-label">
+                  <span>Descripción del proceso</span>
+                  <span className="char-count mono">{trimmedLength} / 4.000</span>
+                </label>
+                <textarea
+                  ref={textareaRef}
+                  id="process-description"
+                  className="process-textarea"
+                  placeholder="Describí los pasos, decisiones y resultados del proceso de negocio..."
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setActiveExampleId(null);
+                  }}
+                  onKeyDown={handleKeyDown}
+                  maxLength={4000}
+                  disabled={loading}
+                />
 
-          {assumptions.length > 0 && (
-            <div className="assumptions-box">
-              <button
-                type="button"
-                className="assumptions-toggle"
-                onClick={() => setAssumptionsOpen((open) => !open)}
-                aria-expanded={assumptionsOpen}
-              >
-                <span>Supuestos asumidos ({assumptions.length})</span>
-                <span>{assumptionsOpen ? '▾' : '▸'}</span>
-              </button>
-              {assumptionsOpen && (
-                <ul>
-                  {assumptions.map((item, idx) => (
-                    <li key={idx}>
-                      <strong>{item.question}</strong>
-                      <div style={{ marginTop: 2 }}>{item.assumption}</div>
-                    </li>
-                  ))}
-                </ul>
+                {trimmedLength === 0 && (
+                  <div className="examples-group">
+                    <span className="examples-label">Ejemplos precargados:</span>
+                    <div className="examples-list">
+                      {PROCESS_EXAMPLES.map((example) => (
+                        <button
+                          key={example.id}
+                          type="button"
+                          className={`chip-btn ${activeExampleId === example.id ? 'active' : ''}`}
+                          disabled={loading}
+                          onClick={() => {
+                            setDescription(example.description);
+                            setActiveExampleId(example.id);
+                            setError(null);
+                          }}
+                        >
+                          {example.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="primary-btn"
+                  disabled={loading || !isValidLength}
+                >
+                  <SparklesIcon />
+                  <span>{loading ? 'Generando diagrama...' : 'Generar diagrama BPMN'}</span>
+                </button>
+                <div className="shortcut-hint">
+                  Atajo: <span className="mono">Ctrl + Enter</span> (mín. 10 caracteres)
+                </div>
+              </form>
+
+              {error && (
+                <div className="status-box status-error" role="alert">
+                  <span>{error}</span>
+                  <button
+                    type="button"
+                    className="retry-btn"
+                    onClick={() => void generateDiagram()}
+                    disabled={loading}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="assumptions-list">
+              {assumptions.length === 0 ? (
+                <div className="excerpt-box">
+                  Todavía no hay supuestos registrados. Generá un diagrama desde la solapa{' '}
+                  <strong>Descripción</strong> para analizar ambigüedades y trazabilidad.
+                </div>
+              ) : (
+                <>
+                  <div className="examples-label">
+                    Hacé clic en una tarjeta para enfocar y resaltar los elementos en el diagrama:
+                  </div>
+                  {assumptions.map((item, idx) => {
+                    const isActive = activeAssumptionIdx === idx;
+                    const count = item.elementIds?.length || 0;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`assumption-card ${isActive ? 'active' : ''}`}
+                        onClick={() => setActiveAssumptionIdx(isActive ? null : idx)}
+                      >
+                        <div className="assumption-question">{item.question}</div>
+                        <div className="assumption-answer">{item.assumption}</div>
+                        <div className="assumption-meta">
+                          <span>
+                            {count > 0
+                              ? `${count} elemento${count > 1 ? 's' : ''} en el diagrama`
+                              : 'Supuesto general del proceso'}
+                          </span>
+                          <span>{isActive ? 'Resaltado ✓' : 'Ubicar →'}</span>
+                        </div>
+                        {isActive && (
+                          <div className="excerpt-box">
+                            <div>{renderHighlightedExcerpt(description, item.sourceExcerpt)}</div>
+                            <button
+                              type="button"
+                              className="tool-btn"
+                              style={{ marginTop: 8 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditExcerptInText(item.sourceExcerpt);
+                              }}
+                            >
+                              Ir al texto para editar →
+                            </button>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </>
               )}
             </div>
           )}
@@ -300,11 +455,24 @@ export default function HomePage() {
           )}
         </aside>
 
+        {sidebarOpen && (
+          <div
+            className={`resize-handle ${isResizing ? 'dragging' : ''}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Ajustar ancho del panel lateral"
+            onMouseDown={() => setIsResizing(true)}
+          />
+        )}
+
         <BpmnEditor
           xml={bpmnXml}
           blankTrigger={blankTrigger}
           loading={loading}
           elapsedSec={elapsedSec}
+          highlightedElementIds={highlightedElementIds}
+          assumptionElementIds={allAssumptionElementIds}
+          onElementSelectAssumption={handleElementSelectAssumption}
           onCreateBlank={handleCreateBlank}
           onDirtyChange={setIsDirty}
           onNotify={showToast}

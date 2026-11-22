@@ -6,6 +6,8 @@ import { GenerateBpmnInput, LlmProvider, LlmRawBpmnOutput, LlmServiceError } fro
 const AssumptionSchema = z.object({
   question: z.string().min(3),
   assumption: z.string().min(3),
+  elementIds: z.array(z.string()).default([]),
+  sourceExcerpt: z.string().optional().default(''),
 });
 
 const LlmOutputSchema = z.object({
@@ -160,15 +162,20 @@ export class VertexAiProvider implements LlmProvider {
                   properties: {
                     question: { type: Type.STRING },
                     assumption: { type: Type.STRING },
+                    elementIds: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                    sourceExcerpt: { type: Type.STRING },
                   },
-                  required: ['question', 'assumption'],
+                  required: ['question', 'assumption', 'elementIds', 'sourceExcerpt'],
                 },
               },
             },
             required: ['bpmnXml', 'assumptions'],
           },
           temperature: 0.2,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 32768,
           abortSignal: signal,
         },
       });
@@ -232,6 +239,25 @@ export class VertexAiProvider implements LlmProvider {
       );
     }
 
-    return validated.data;
+    const usageMeta = response.usageMetadata as
+      | {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+          thoughtsTokenCount?: number;
+          totalTokenCount?: number;
+        }
+      | undefined;
+
+    return {
+      ...validated.data,
+      usage: usageMeta
+        ? {
+            promptTokens: usageMeta.promptTokenCount,
+            outputTokens: usageMeta.candidatesTokenCount,
+            thinkingTokens: usageMeta.thoughtsTokenCount,
+            totalTokens: usageMeta.totalTokenCount,
+          }
+        : undefined,
+    };
   }
 }
