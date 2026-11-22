@@ -139,9 +139,17 @@ export class VertexAiProvider implements LlmProvider {
   }
 
   async generate(input: GenerateBpmnInput, signal: AbortSignal): Promise<LlmRawBpmnOutput> {
-    const userContent = input.repairFeedback
-      ? `<process_description>\n${input.processDescription}\n</process_description>\n\nEl intento anterior falló la validación BPMN con este error:\n${input.repairFeedback}\n\nCorregí exclusivamente ese defecto y devolvé un JSON válido.`
-      : `<process_description>\n${input.processDescription}\n</process_description>`;
+    const previousSemantic = input.previousBpmnXml
+      ? input.previousBpmnXml.replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/i, '').trim()
+      : '';
+
+    let userContent = `<process_description>\n${input.processDescription}\n</process_description>`;
+    if (previousSemantic) {
+      userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nRefiná el diagrama anterior aplicando únicamente los cambios de <process_description> y conservando los IDs y elementos no afectados.`;
+    }
+    if (input.repairFeedback) {
+      userContent += `\n\nEl intento anterior falló la validación BPMN con este error:\n${input.repairFeedback}\n\nCorregí exclusivamente ese defecto y devolvé un JSON válido.`;
+    }
 
     let response;
     try {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BpmnValidationError, validateAndLayoutBpmn } from '@/lib/bpmn/validator';
+import { buildCacheKey, getCachedBpmn, setCachedBpmn } from '@/lib/cache';
 import { ResilientLlmAdapter } from '@/lib/llm/adapter';
 import { GroqProvider } from '@/lib/llm/groq-provider';
 import { LlmProvider, LlmServiceError } from '@/lib/llm/types';
@@ -20,6 +21,8 @@ const RequestSchema = z.object({
     .trim()
     .min(10, 'La descripción debe tener al menos 10 caracteres.')
     .max(4000, 'La descripción no puede superar los 4.000 caracteres.'),
+  previousBpmnXml: z.string().max(150_000).optional(),
+  mode: z.enum(['detailed', 'fast']).default('detailed'),
 });
 
 function getClientIp(req: NextRequest): string {
@@ -87,17 +90,63 @@ export async function POST(req: NextRequest) {
   }
 
   const inputChars = parsed.data.processDescription.length;
+  const mode = parsed.data.mode;
+  const cacheKey = buildCacheKey(parsed.data.processDescription, mode);
+  const cachedEntry = getCachedBpmn(cacheKey);
+  if (cachedEntry) {
+    const totalLatencyMs = Math.round(performance.now() - startedAt);
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'success',
+      httpStatus: 200,
+      errorCode: null,
+      provider: cachedEntry.provider,
+      model: cachedEntry.model,
+      fallbackUsed: false,
+      cached: true,
+      incremental: false,
+      latencyMs: totalLatencyMs,
+      attempts: 0,
+      repaired: false,
+      inputChars,
+      outputXmlBytes: Buffer.byteLength(cachedEntry.bpmnXml, 'utf8'),
+      assumptionsCount: cachedEntry.assumptions.length,
+    });
+    return NextResponse.json(
+      {
+        bpmnXml: cachedEntry.bpmnXml,
+        assumptions: cachedEntry.assumptions,
+        meta: {
+          provider: cachedEntry.provider,
+          model: cachedEntry.model,
+          latencyMs: totalLatencyMs,
+          attempts: 0,
+          repaired: false,
+          fallbackUsed: false,
+          cached: true,
+          incremental: false,
+        },
+      },
+      { headers: { 'X-Request-Id': requestId } }
+    );
+  }
+
+  const incremental = Boolean(parsed.data.previousBpmnXml?.trim());
   let attempts = 1;
   let repaired = false;
 
   try {
-    const providers: LlmProvider[] = [new VertexAiProvider()];
-    if (process.env.GROQ_API_KEY?.trim()) {
-      providers.push(new GroqProvider());
-    }
+    const hasGroq = Boolean(process.env.GROQ_API_KEY?.trim());
+    const providers: LlmProvider[] =
+      mode === 'fast' && hasGroq
+        ? [new GroqProvider(), new VertexAiProvider()]
+        : hasGroq
+          ? [new VertexAiProvider(), new GroqProvider()]
+          : [new VertexAiProvider()];
     const adapter = new ResilientLlmAdapter(providers, 180_000);
     let result = await adapter.generate({
       processDescription: parsed.data.processDescription,
+      previousBpmnXml: parsed.data.previousBpmnXml,
     });
 
     let layoutedXml: string;
@@ -117,12 +166,20 @@ export async function POST(req: NextRequest) {
       result = await adapter.generate(
         {
           processDescription: parsed.data.processDescription,
+          previousBpmnXml: parsed.data.previousBpmnXml,
           repairFeedback: validationErr.message,
         },
         Math.round(remainingMs)
       );
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
     }
+
+    setCachedBpmn(cacheKey, {
+      bpmnXml: layoutedXml,
+      assumptions: result.assumptions,
+      provider: result.meta.provider,
+      model: result.meta.model,
+    });
 
     const totalLatencyMs = Math.round(performance.now() - startedAt);
     logGenerationTelemetry({
@@ -133,6 +190,8 @@ export async function POST(req: NextRequest) {
       provider: result.meta.provider,
       model: result.meta.model,
       fallbackUsed: result.meta.fallbackUsed,
+      cached: false,
+      incremental,
       latencyMs: totalLatencyMs,
       attempts,
       repaired,
@@ -151,6 +210,8 @@ export async function POST(req: NextRequest) {
           latencyMs: totalLatencyMs,
           attempts,
           repaired,
+          cached: false,
+          incremental,
         },
       },
       { headers: { 'X-Request-Id': requestId } }
