@@ -24,6 +24,7 @@ interface GenerateMeta {
   latencyMs: number;
   attempts?: number;
   repaired?: boolean;
+  fallbackUsed?: boolean;
 }
 
 interface StructuredAssumption {
@@ -450,6 +451,7 @@ export default function HomePage() {
           {meta && (
             <div className="meta-badge mono">
               {meta.provider} · {meta.model} · {(meta.latencyMs / 1000).toFixed(1)}s
+              {meta.fallbackUsed ? ' · fallback' : ''}
               {meta.repaired ? ' · auto-reparado' : ''}
             </div>
           )}

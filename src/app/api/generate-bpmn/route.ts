@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BpmnValidationError, validateAndLayoutBpmn } from '@/lib/bpmn/validator';
 import { ResilientLlmAdapter } from '@/lib/llm/adapter';
-import { LlmServiceError } from '@/lib/llm/types';
+import { GroqProvider } from '@/lib/llm/groq-provider';
+import { LlmProvider, LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logGenerationTelemetry } from '@/lib/telemetry';
@@ -44,8 +45,8 @@ export async function POST(req: NextRequest) {
       inputChars: 0,
     });
     return NextResponse.json(
-      { error: 'Demasiadas solicitudes. Esperá unos segundos antes de volver a intentar.' },
-      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+      { error: 'Demasiadas solicitudes. Esperá unos segundos antes de volver a intentar.', requestId },
+      { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec), 'X-Request-Id': requestId } }
     );
   }
 
@@ -90,7 +91,11 @@ export async function POST(req: NextRequest) {
   let repaired = false;
 
   try {
-    const adapter = new ResilientLlmAdapter([new VertexAiProvider()], 180_000);
+    const providers: LlmProvider[] = [new VertexAiProvider()];
+    if (process.env.GROQ_API_KEY?.trim()) {
+      providers.push(new GroqProvider());
+    }
+    const adapter = new ResilientLlmAdapter(providers, 180_000);
     let result = await adapter.generate({
       processDescription: parsed.data.processDescription,
     });
@@ -127,6 +132,7 @@ export async function POST(req: NextRequest) {
       errorCode: null,
       provider: result.meta.provider,
       model: result.meta.model,
+      fallbackUsed: result.meta.fallbackUsed,
       latencyMs: totalLatencyMs,
       attempts,
       repaired,
@@ -136,16 +142,19 @@ export async function POST(req: NextRequest) {
       usage: result.usage,
     });
 
-    return NextResponse.json({
-      bpmnXml: layoutedXml,
-      assumptions: result.assumptions,
-      meta: {
-        ...result.meta,
-        latencyMs: totalLatencyMs,
-        attempts,
-        repaired,
+    return NextResponse.json(
+      {
+        bpmnXml: layoutedXml,
+        assumptions: result.assumptions,
+        meta: {
+          ...result.meta,
+          latencyMs: totalLatencyMs,
+          attempts,
+          repaired,
+        },
       },
-    });
+      { headers: { 'X-Request-Id': requestId } }
+    );
   } catch (err) {
     const totalLatencyMs = Math.round(performance.now() - startedAt);
     if (err instanceof BpmnValidationError) {
@@ -159,7 +168,10 @@ export async function POST(req: NextRequest) {
         repaired,
         inputChars,
       });
-      return NextResponse.json({ error: err.message }, { status: 502 });
+      return NextResponse.json(
+        { error: err.message, requestId },
+        { status: 502, headers: { 'X-Request-Id': requestId } }
+      );
     }
     if (err instanceof LlmServiceError) {
       logGenerationTelemetry({
@@ -172,7 +184,10 @@ export async function POST(req: NextRequest) {
         repaired,
         inputChars,
       });
-      return NextResponse.json({ error: err.message }, { status: err.statusCode });
+      return NextResponse.json(
+        { error: err.message, requestId },
+        { status: err.statusCode, headers: { 'X-Request-Id': requestId } }
+      );
     }
     logGenerationTelemetry({
       requestId,
@@ -185,8 +200,8 @@ export async function POST(req: NextRequest) {
       inputChars,
     });
     return NextResponse.json(
-      { error: 'Ocurrió un error inesperado al generar el diagrama.' },
-      { status: 500 }
+      { error: 'Ocurrió un error inesperado al generar el diagrama.', requestId },
+      { status: 500, headers: { 'X-Request-Id': requestId } }
     );
   }
 }
