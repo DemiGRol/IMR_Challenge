@@ -25,6 +25,8 @@ interface GenerateMeta {
   attempts?: number;
   repaired?: boolean;
   fallbackUsed?: boolean;
+  cached?: boolean;
+  incremental?: boolean;
 }
 
 interface StructuredAssumption {
@@ -41,8 +43,9 @@ interface GenerateResponse {
   error?: string;
 }
 
-type DiagramSource = 'empty' | 'ai' | 'blank';
+type DiagramSource = 'empty' | 'ai' | 'blank' | 'imported';
 type SidebarTab = 'description' | 'assumptions';
+type GenerationMode = 'detailed' | 'fast';
 
 function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
   const cleanExcerpt = excerpt?.trim();
@@ -79,6 +82,7 @@ function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<SidebarTab>('description');
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('detailed');
   const [description, setDescription] = useState('');
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const [bpmnXml, setBpmnXml] = useState<string | null>(null);
@@ -178,6 +182,25 @@ export default function HomePage() {
     );
   };
 
+  const handleImportBpmn = useCallback(
+    (xml: string, filename: string) => {
+      if (
+        isDirty &&
+        !window.confirm('Tenés cambios manuales en el diagrama actual. ¿Querés reemplazarlo?')
+      ) {
+        return;
+      }
+      setBpmnXml(xml);
+      setAssumptions([]);
+      setActiveAssumptionIdx(null);
+      setMeta(null);
+      setError(null);
+      setDiagramSource('imported');
+      showToast(`Diagrama "${filename}" importado.`);
+    },
+    [isDirty, showToast]
+  );
+
   const handleCreateBlank = useCallback(() => {
     if (
       isDirty &&
@@ -211,7 +234,11 @@ export default function HomePage() {
       const res = await fetch('/api/generate-bpmn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ processDescription: description.trim() }),
+        body: JSON.stringify({
+          processDescription: description.trim(),
+          previousBpmnXml: bpmnXml || undefined,
+          mode: generationMode,
+        }),
       });
 
       let data: GenerateResponse = {};
@@ -263,7 +290,9 @@ export default function HomePage() {
       ? { label: 'Generado por IA', className: 'badge badge-ai' }
       : diagramSource === 'blank'
         ? { label: 'Lienzo en blanco', className: 'badge' }
-        : { label: 'Sin diagrama', className: 'badge' };
+        : diagramSource === 'imported'
+          ? { label: 'Importado (.bpmn)', className: 'badge' }
+          : { label: 'Sin diagrama', className: 'badge' };
 
   return (
     <div className="app-shell">
@@ -365,6 +394,25 @@ export default function HomePage() {
                   </div>
                 )}
 
+                <div className="sidebar-tabs" style={{ marginTop: 10, marginBottom: 10 }} role="group" aria-label="Modo de generación">
+                  <button
+                    type="button"
+                    className={`tab-btn ${generationMode === 'detailed' ? 'active' : ''}`}
+                    disabled={loading}
+                    onClick={() => setGenerationMode('detailed')}
+                  >
+                    Detallado (Vertex)
+                  </button>
+                  <button
+                    type="button"
+                    className={`tab-btn ${generationMode === 'fast' ? 'active' : ''}`}
+                    disabled={loading}
+                    onClick={() => setGenerationMode('fast')}
+                  >
+                    Rápido (Groq)
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   className="primary-btn"
@@ -451,6 +499,8 @@ export default function HomePage() {
           {meta && (
             <div className="meta-badge mono">
               {meta.provider} · {meta.model} · {(meta.latencyMs / 1000).toFixed(1)}s
+              {meta.cached ? ' · caché' : ''}
+              {meta.incremental ? ' · refinado' : ''}
               {meta.fallbackUsed ? ' · fallback' : ''}
               {meta.repaired ? ' · auto-reparado' : ''}
             </div>
@@ -475,6 +525,7 @@ export default function HomePage() {
           highlightedElementIds={highlightedElementIds}
           assumptionElementIds={allAssumptionElementIds}
           onElementSelectAssumption={handleElementSelectAssumption}
+          onImportBpmn={handleImportBpmn}
           onCreateBlank={handleCreateBlank}
           onDirtyChange={setIsDirty}
           onNotify={showToast}

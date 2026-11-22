@@ -10,6 +10,7 @@ import {
   PlusIcon,
   RedoIcon,
   UndoIcon,
+  UploadIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from '@/components/Icons';
@@ -51,6 +52,7 @@ interface BpmnEditorProps {
   highlightedElementIds: string[];
   assumptionElementIds: string[];
   onElementSelectAssumption: (elementId: string) => void;
+  onImportBpmn: (xml: string, filename: string) => void;
   onCreateBlank: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onNotify: (message: string) => void;
@@ -86,11 +88,13 @@ export default function BpmnEditor({
   highlightedElementIds,
   assumptionElementIds,
   onElementSelectAssumption,
+  onImportBpmn,
   onCreateBlank,
   onDirtyChange,
   onNotify,
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
   const prevHighlightedRef = useRef<string[]>([]);
   const prevAssumptionMarkedRef = useRef<string[]>([]);
@@ -310,6 +314,26 @@ export default function BpmnEditor({
     commandStack.redo();
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+      setImportError('El archivo .bpmn supera el límite de 500 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === 'string' ? reader.result : '';
+      if (!content.trim()) {
+        setImportError('El archivo seleccionado está vacío.');
+        return;
+      }
+      onImportBpmn(content, file.name);
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
   const handleDownloadBpmn = async () => {
     const modeler = modelerRef.current;
     if (!modeler || !hasDiagram) return;
@@ -391,6 +415,23 @@ export default function BpmnEditor({
         </div>
 
         <div className="toolbar-group">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".bpmn,.xml"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+            title="Importar archivo BPMN 2.0 local"
+          >
+            <UploadIcon />
+            <span>Importar .bpmn</span>
+          </button>
           <button
             type="button"
             className="tool-btn"

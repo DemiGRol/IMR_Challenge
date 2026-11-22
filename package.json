@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/core.test.ts",
     "spike:bpmn": "node --experimental-strip-types scripts/spike-bpmn.ts"
   },
   "dependencies": {
