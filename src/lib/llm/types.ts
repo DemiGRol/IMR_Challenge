@@ -2,6 +2,7 @@ import type { TokenUsage } from '@/lib/telemetry';
 
 export interface GenerateBpmnInput {
   processDescription: string;
+  previousBpmnXml?: string;
   repairFeedback?: string;
 }
 

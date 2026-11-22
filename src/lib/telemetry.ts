@@ -15,6 +15,8 @@ export interface GenerationTelemetryEvent {
   provider?: string;
   model?: string;
   fallbackUsed?: boolean;
+  cached?: boolean;
+  incremental?: boolean;
   latencyMs: number;
   attempts: number;
   repaired: boolean;
