@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BpmnValidationError, validateAndLayoutBpmn } from '@/lib/bpmn/validator';
 import { ResilientLlmAdapter } from '@/lib/llm/adapter';
-import { LlmServiceError } from '@/lib/llm/types';
+import { GroqProvider } from '@/lib/llm/groq-provider';
+import { LlmProvider, LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logGenerationTelemetry } from '@/lib/telemetry';
@@ -90,7 +91,11 @@ export async function POST(req: NextRequest) {
   let repaired = false;
 
   try {
-    const adapter = new ResilientLlmAdapter([new VertexAiProvider()], 180_000);
+    const providers: LlmProvider[] = [new VertexAiProvider()];
+    if (process.env.GROQ_API_KEY?.trim()) {
+      providers.push(new GroqProvider());
+    }
+    const adapter = new ResilientLlmAdapter(providers, 180_000);
     let result = await adapter.generate({
       processDescription: parsed.data.processDescription,
     });
@@ -127,6 +132,7 @@ export async function POST(req: NextRequest) {
       errorCode: null,
       provider: result.meta.provider,
       model: result.meta.model,
+      fallbackUsed: result.meta.fallbackUsed,
       latencyMs: totalLatencyMs,
       attempts,
       repaired,
