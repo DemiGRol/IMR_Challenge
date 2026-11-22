@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { BpmnValidationError, validateAndLayoutBpmn } from '@/lib/bpmn/validator';
@@ -5,6 +6,7 @@ import { ResilientLlmAdapter } from '@/lib/llm/adapter';
 import { LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { logGenerationTelemetry } from '@/lib/telemetry';
 
 export const maxDuration = 300;
 
@@ -26,9 +28,21 @@ function getClientIp(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = randomUUID();
+  const startedAt = performance.now();
   const ip = getClientIp(req);
   const rate = checkRateLimit(ip);
   if (!rate.allowed) {
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'error',
+      httpStatus: 429,
+      errorCode: 'APP_RATE_LIMIT',
+      latencyMs: Math.round(performance.now() - startedAt),
+      attempts: 0,
+      repaired: false,
+      inputChars: 0,
+    });
     return NextResponse.json(
       { error: 'Demasiadas solicitudes. Esperá unos segundos antes de volver a intentar.' },
       { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
@@ -39,6 +53,16 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'error',
+      httpStatus: 400,
+      errorCode: 'INVALID_JSON_BODY',
+      latencyMs: Math.round(performance.now() - startedAt),
+      attempts: 0,
+      repaired: false,
+      inputChars: 0,
+    });
     return NextResponse.json(
       { error: 'El cuerpo de la solicitud debe ser JSON válido.' },
       { status: 400 }
@@ -48,10 +72,22 @@ export async function POST(req: NextRequest) {
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message || 'Descripción de proceso inválida.';
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'error',
+      httpStatus: 400,
+      errorCode: 'INVALID_INPUT',
+      latencyMs: Math.round(performance.now() - startedAt),
+      attempts: 0,
+      repaired: false,
+      inputChars: 0,
+    });
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const startedAt = performance.now();
+  const inputChars = parsed.data.processDescription.length;
+  let attempts = 1;
+  let repaired = false;
 
   try {
     const adapter = new ResilientLlmAdapter([new VertexAiProvider()], 180_000);
@@ -60,8 +96,6 @@ export async function POST(req: NextRequest) {
     });
 
     let layoutedXml: string;
-    let attempts = 1;
-    let repaired = false;
 
     try {
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
@@ -72,11 +106,6 @@ export async function POST(req: NextRequest) {
       if (remainingMs < MIN_REPAIR_BUDGET_MS) {
         throw validationErr;
       }
-
-      console.warn('[generate-bpmn] Validation failed, attempting single repair', {
-        reason: validationErr.message,
-        remainingMs: Math.round(remainingMs),
-      });
 
       attempts = 2;
       repaired = true;
@@ -90,25 +119,70 @@ export async function POST(req: NextRequest) {
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
     }
 
+    const totalLatencyMs = Math.round(performance.now() - startedAt);
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'success',
+      httpStatus: 200,
+      errorCode: null,
+      provider: result.meta.provider,
+      model: result.meta.model,
+      latencyMs: totalLatencyMs,
+      attempts,
+      repaired,
+      inputChars,
+      outputXmlBytes: Buffer.byteLength(layoutedXml, 'utf8'),
+      assumptionsCount: result.assumptions.length,
+      usage: result.usage,
+    });
+
     return NextResponse.json({
       bpmnXml: layoutedXml,
       assumptions: result.assumptions,
       meta: {
         ...result.meta,
-        latencyMs: Math.round(performance.now() - startedAt),
+        latencyMs: totalLatencyMs,
         attempts,
         repaired,
       },
     });
   } catch (err) {
+    const totalLatencyMs = Math.round(performance.now() - startedAt);
     if (err instanceof BpmnValidationError) {
+      logGenerationTelemetry({
+        requestId,
+        outcome: 'error',
+        httpStatus: 502,
+        errorCode: 'BPMN_VALIDATION_ERROR',
+        latencyMs: totalLatencyMs,
+        attempts,
+        repaired,
+        inputChars,
+      });
       return NextResponse.json({ error: err.message }, { status: 502 });
     }
     if (err instanceof LlmServiceError) {
+      logGenerationTelemetry({
+        requestId,
+        outcome: 'error',
+        httpStatus: err.statusCode,
+        errorCode: err.code,
+        latencyMs: totalLatencyMs,
+        attempts,
+        repaired,
+        inputChars,
+      });
       return NextResponse.json({ error: err.message }, { status: err.statusCode });
     }
-    console.error('[generate-bpmn] Unexpected error', {
-      name: err instanceof Error ? err.name : 'UnknownError',
+    logGenerationTelemetry({
+      requestId,
+      outcome: 'error',
+      httpStatus: 500,
+      errorCode: 'UNEXPECTED_ERROR',
+      latencyMs: totalLatencyMs,
+      attempts,
+      repaired,
+      inputChars,
     });
     return NextResponse.json(
       { error: 'Ocurrió un error inesperado al generar el diagrama.' },

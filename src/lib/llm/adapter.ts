@@ -29,6 +29,7 @@ export class ResilientLlmAdapter {
         return {
           bpmnXml: raw.bpmnXml,
           assumptions: raw.assumptions,
+          usage: raw.usage,
           meta: {
             provider: provider.name,
             model: provider.model,

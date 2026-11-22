@@ -16,6 +16,19 @@ import {
 
 interface BpmnCanvas {
   zoom: (level?: number | 'fit-viewport', center?: 'auto') => number;
+  addMarker: (elementId: string, marker: string) => void;
+  removeMarker: (elementId: string, marker: string) => void;
+  scrollToElement?: (element: unknown) => void;
+  viewbox: (box?: { x: number; y: number; width: number; height: number }) => {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+interface BpmnElementRegistry {
+  get: (id: string) => { x?: number; y?: number; width?: number; height?: number } | undefined;
 }
 
 interface BpmnCommandStack {
@@ -26,8 +39,8 @@ interface BpmnCommandStack {
 }
 
 interface BpmnEventBus {
-  on: (event: string, callback: () => void) => void;
-  off: (event: string, callback: () => void) => void;
+  on: (event: string, callback: (e?: { element?: { id?: string } }) => void) => void;
+  off: (event: string, callback: (e?: { element?: { id?: string } }) => void) => void;
 }
 
 interface BpmnEditorProps {
@@ -35,6 +48,9 @@ interface BpmnEditorProps {
   blankTrigger: number;
   loading: boolean;
   elapsedSec: number;
+  highlightedElementIds: string[];
+  assumptionElementIds: string[];
+  onElementSelectAssumption: (elementId: string) => void;
   onCreateBlank: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onNotify: (message: string) => void;
@@ -67,12 +83,19 @@ export default function BpmnEditor({
   blankTrigger,
   loading,
   elapsedSec,
+  highlightedElementIds,
+  assumptionElementIds,
+  onElementSelectAssumption,
   onCreateBlank,
   onDirtyChange,
   onNotify,
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
+  const prevHighlightedRef = useRef<string[]>([]);
+  const prevAssumptionMarkedRef = useRef<string[]>([]);
+  const onSelectRef = useRef(onElementSelectAssumption);
+  onSelectRef.current = onElementSelectAssumption;
   const [importError, setImportError] = useState<string | null>(null);
   const [hasDiagram, setHasDiagram] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
@@ -113,13 +136,19 @@ export default function BpmnEditor({
     };
 
     const onViewboxChanged = () => syncZoom();
+    const onElementClick = (event?: { element?: { id?: string } }) => {
+      const id = event?.element?.id;
+      if (id) onSelectRef.current(id);
+    };
 
     eventBus.on('commandStack.changed', onStackChanged);
     eventBus.on('canvas.viewbox.changed', onViewboxChanged);
+    eventBus.on('element.click', onElementClick);
 
     return () => {
       eventBus.off('commandStack.changed', onStackChanged);
       eventBus.off('canvas.viewbox.changed', onViewboxChanged);
+      eventBus.off('element.click', onElementClick);
       modeler.destroy();
       modelerRef.current = null;
     };
@@ -186,6 +215,69 @@ export default function BpmnEditor({
       cancelled = true;
     };
   }, [blankTrigger, onDirtyChange, syncZoom]);
+
+  useEffect(() => {
+    const modeler = modelerRef.current;
+    if (!modeler || !hasDiagram) return;
+
+    const canvas = modeler.get('canvas') as BpmnCanvas;
+    const registry = modeler.get('elementRegistry') as BpmnElementRegistry;
+
+    for (const oldId of prevAssumptionMarkedRef.current) {
+      if (registry.get(oldId)) {
+        canvas.removeMarker(oldId, 'bpmn-has-assumption');
+      }
+    }
+    const validAll = assumptionElementIds.filter((id) => Boolean(registry.get(id)));
+    for (const id of validAll) {
+      canvas.addMarker(id, 'bpmn-has-assumption');
+    }
+    prevAssumptionMarkedRef.current = validAll;
+  }, [assumptionElementIds, hasDiagram]);
+
+  useEffect(() => {
+    const modeler = modelerRef.current;
+    if (!modeler || !hasDiagram) return;
+
+    const canvas = modeler.get('canvas') as BpmnCanvas;
+    const registry = modeler.get('elementRegistry') as BpmnElementRegistry;
+
+    for (const oldId of prevHighlightedRef.current) {
+      if (registry.get(oldId)) {
+        canvas.removeMarker(oldId, 'bpmn-assumption-highlight');
+      }
+    }
+
+    const validIds = highlightedElementIds.filter((id) => Boolean(registry.get(id)));
+    for (const id of validIds) {
+      canvas.addMarker(id, 'bpmn-assumption-highlight');
+    }
+    prevHighlightedRef.current = validIds;
+
+    if (validIds.length > 0) {
+      const firstEl = registry.get(validIds[0]);
+      if (firstEl && typeof firstEl.x === 'number' && typeof firstEl.y === 'number') {
+        const startVb = canvas.viewbox();
+        const targetX = firstEl.x - startVb.width / 2 + (firstEl.width || 80) / 2;
+        const targetY = firstEl.y - startVb.height / 2 + (firstEl.height || 60) / 2;
+        const durationMs = 380;
+        const startTime = performance.now();
+
+        const animate = (now: number) => {
+          const t = Math.min(1, (now - startTime) / durationMs);
+          const eased = 1 - Math.pow(1 - t, 3);
+          canvas.viewbox({
+            x: startVb.x + (targetX - startVb.x) * eased,
+            y: startVb.y + (targetY - startVb.y) * eased,
+            width: startVb.width,
+            height: startVb.height,
+          });
+          if (t < 1) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+      }
+    }
+  }, [highlightedElementIds, hasDiagram]);
 
   const handleZoom = (delta: number) => {
     const modeler = modelerRef.current;

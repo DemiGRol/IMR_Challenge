@@ -1,3 +1,5 @@
+import type { TokenUsage } from '@/lib/telemetry';
+
 export interface GenerateBpmnInput {
   processDescription: string;
   repairFeedback?: string;
@@ -6,11 +8,14 @@ export interface GenerateBpmnInput {
 export interface StructuredAssumption {
   question: string;
   assumption: string;
+  elementIds: string[];
+  sourceExcerpt?: string;
 }
 
 export interface LlmRawBpmnOutput {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
+  usage?: TokenUsage;
 }
 
 export interface LlmProvider {
@@ -22,6 +27,7 @@ export interface LlmProvider {
 export interface LlmGenerateResult {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
+  usage?: TokenUsage;
   meta: {
     provider: string;
     model: string;
