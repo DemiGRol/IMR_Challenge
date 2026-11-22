@@ -14,6 +14,7 @@ export interface GenerationTelemetryEvent {
   errorCode: string | null;
   provider?: string;
   model?: string;
+  fallbackUsed?: boolean;
   latencyMs: number;
   attempts: number;
   repaired: boolean;
