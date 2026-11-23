@@ -32,6 +32,7 @@ interface GenerateMeta {
 interface StructuredAssumption {
   question: string;
   assumption: string;
+  impact?: 'high' | 'medium' | 'low';
   elementIds?: string[];
   sourceExcerpt?: string;
 }
@@ -91,6 +92,7 @@ export default function HomePage() {
   const [isDirty, setIsDirty] = useState(false);
   const [assumptions, setAssumptions] = useState<StructuredAssumption[]>([]);
   const [activeAssumptionIdx, setActiveAssumptionIdx] = useState<number | null>(null);
+  const [showSecondaryAssumptions, setShowSecondaryAssumptions] = useState(false);
   const [meta, setMeta] = useState<GenerateMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -100,6 +102,7 @@ export default function HomePage() {
   const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const xmlGetterRef = useRef<(() => Promise<string | null>) | null>(null);
 
   const trimmedLength = description.trim().length;
   const isValidLength = trimmedLength >= 10 && trimmedLength <= 4000;
@@ -217,27 +220,40 @@ export default function HomePage() {
     setBlankTrigger((prev) => prev + 1);
   }, [isDirty]);
 
-  const generateDiagram = async () => {
+  const generateDiagram = async (requestedMode?: 'fresh' | 'preserve-edits') => {
     if (!isValidLength || loading) {
       if (!isValidLength) {
         setError('Ingresá una descripción de entre 10 y 4.000 caracteres.');
       }
       return;
     }
-    if (!confirmOverwriteIfDirty()) return;
+
+    const iterationMode: 'fresh' | 'preserve-edits' =
+      requestedMode ?? (isDirty ? 'preserve-edits' : 'fresh');
+
+    if (iterationMode === 'fresh' && isDirty) {
+      const ok = window.confirm(
+        'Tenés cambios manuales en el diagrama actual. ¿Querés descartarlos y regenerar desde cero?'
+      );
+      if (!ok) return;
+    }
 
     setLoading(true);
     setError(null);
     setActiveAssumptionIdx(null);
 
     try {
+      const liveXml =
+        iterationMode === 'preserve-edits' ? await xmlGetterRef.current?.() : null;
+
       const res = await fetch('/api/generate-bpmn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           processDescription: description.trim(),
-          previousBpmnXml: bpmnXml || undefined,
+          previousBpmnXml: liveXml || undefined,
           mode: generationMode,
+          iterationMode,
         }),
       });
 
@@ -260,6 +276,7 @@ export default function HomePage() {
       const nextAssumptions = data.assumptions || [];
       setBpmnXml(data.bpmnXml);
       setAssumptions(nextAssumptions);
+      setShowSecondaryAssumptions(false);
       setMeta(data.meta || null);
       setDiagramSource('ai');
       if (nextAssumptions.length > 0) {
@@ -401,7 +418,7 @@ export default function HomePage() {
                     disabled={loading}
                     onClick={() => setGenerationMode('detailed')}
                   >
-                    Detallado (Vertex)
+                    Detallado
                   </button>
                   <button
                     type="button"
@@ -409,7 +426,7 @@ export default function HomePage() {
                     disabled={loading}
                     onClick={() => setGenerationMode('fast')}
                   >
-                    Rápido (Groq)
+                    Rápido
                   </button>
                 </div>
 
@@ -419,10 +436,29 @@ export default function HomePage() {
                   disabled={loading || !isValidLength}
                 >
                   <SparklesIcon />
-                  <span>{loading ? 'Generando diagrama...' : 'Generar diagrama BPMN'}</span>
+                  <span>
+                    {loading
+                      ? 'Generando diagrama...'
+                      : isDirty
+                        ? 'Refinar conservando mis ediciones'
+                        : bpmnXml
+                          ? 'Regenerar diagrama BPMN'
+                          : 'Generar diagrama BPMN'}
+                  </span>
                 </button>
+                {isDirty && (
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                    disabled={loading || !isValidLength}
+                    onClick={() => void generateDiagram('fresh')}
+                  >
+                    Regenerar desde cero (descartar ediciones)
+                  </button>
+                )}
                 <div className="shortcut-hint">
-                  Atajo: <span className="mono">Ctrl + Enter</span> (mín. 10 caracteres)
+                  Atajo: <span className="mono">Ctrl + Enter</span> · Editá la descripción completa
                 </div>
               </form>
 
@@ -452,45 +488,82 @@ export default function HomePage() {
                   <div className="examples-label">
                     Hacé clic en una tarjeta para enfocar y resaltar los elementos en el diagrama:
                   </div>
-                  {assumptions.map((item, idx) => {
-                    const isActive = activeAssumptionIdx === idx;
-                    const count = item.elementIds?.length || 0;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        className={`assumption-card ${isActive ? 'active' : ''}`}
-                        onClick={() => setActiveAssumptionIdx(isActive ? null : idx)}
-                      >
-                        <div className="assumption-question">{item.question}</div>
-                        <div className="assumption-answer">{item.assumption}</div>
-                        <div className="assumption-meta">
-                          <span>
-                            {count > 0
-                              ? `${count} elemento${count > 1 ? 's' : ''} en el diagrama`
-                              : 'Supuesto general del proceso'}
-                          </span>
-                          <span>{isActive ? 'Resaltado ✓' : 'Ubicar →'}</span>
-                        </div>
-                        {isActive && (
-                          <div className="excerpt-box">
-                            <div>{renderHighlightedExcerpt(description, item.sourceExcerpt)}</div>
-                            <button
-                              type="button"
-                              className="tool-btn"
-                              style={{ marginTop: 8 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditExcerptInText(item.sourceExcerpt);
-                              }}
-                            >
-                              Ir al texto para editar →
-                            </button>
+                  {(() => {
+                    const indexed = assumptions.map((item, idx) => ({ item, idx }));
+                    const primary = indexed.filter(({ item }) => item.impact === 'high');
+                    const secondary = indexed.filter(({ item }) => item.impact !== 'high');
+                    const visible =
+                      primary.length === 0 || showSecondaryAssumptions ? indexed : primary;
+
+                    const renderCard = ({ item, idx }: { item: StructuredAssumption; idx: number }) => {
+                      const isActive = activeAssumptionIdx === idx;
+                      const count = item.elementIds?.length || 0;
+                      const impactLabel =
+                        item.impact === 'high'
+                          ? 'Alto impacto'
+                          : item.impact === 'low'
+                            ? 'Detalle menor'
+                            : 'Impacto medio';
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          className={`assumption-card ${isActive ? 'active' : ''}`}
+                          onClick={() => setActiveAssumptionIdx(isActive ? null : idx)}
+                        >
+                          <div className="assumption-top">
+                            <span className={`impact-pill impact-${item.impact || 'medium'}`}>
+                              {impactLabel}
+                            </span>
                           </div>
+                          <div className="assumption-question">{item.question}</div>
+                          <div className="assumption-answer">{item.assumption}</div>
+                          <div className="assumption-meta">
+                            <span>
+                              {count > 0
+                                ? `${count} elemento${count > 1 ? 's' : ''} en el diagrama`
+                                : 'Supuesto general del proceso'}
+                            </span>
+                            <span>{isActive ? 'Resaltado ✓' : 'Ubicar →'}</span>
+                          </div>
+                          {isActive && (
+                            <div className="excerpt-box">
+                              <div>{renderHighlightedExcerpt(description, item.sourceExcerpt)}</div>
+                              <button
+                                type="button"
+                                className="tool-btn"
+                                style={{ marginTop: 8 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditExcerptInText(item.sourceExcerpt);
+                                }}
+                              >
+                                Ir al texto para editar →
+                              </button>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    };
+
+                    return (
+                      <>
+                        {visible.map(renderCard)}
+                        {primary.length > 0 && secondary.length > 0 && (
+                          <button
+                            type="button"
+                            className="tool-btn"
+                            style={{ width: '100%', justifyContent: 'center' }}
+                            onClick={() => setShowSecondaryAssumptions((s) => !s)}
+                          >
+                            {showSecondaryAssumptions
+                              ? 'Ocultar supuestos secundarios'
+                              : `Ver ${secondary.length} supuesto${secondary.length > 1 ? 's' : ''} secundario${secondary.length > 1 ? 's' : ''}`}
+                          </button>
                         )}
-                      </button>
+                      </>
                     );
-                  })}
+                  })()}
                 </>
               )}
             </div>
@@ -526,6 +599,7 @@ export default function HomePage() {
           assumptionElementIds={allAssumptionElementIds}
           onElementSelectAssumption={handleElementSelectAssumption}
           onImportBpmn={handleImportBpmn}
+          xmlGetterRef={xmlGetterRef}
           onCreateBlank={handleCreateBlank}
           onDirtyChange={setIsDirty}
           onNotify={showToast}

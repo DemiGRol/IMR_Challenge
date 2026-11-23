@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { z } from 'zod';
 import { BPMN_SYSTEM_INSTRUCTION } from './prompt';
 import { GenerateBpmnInput, LlmProvider, LlmRawBpmnOutput, LlmServiceError } from './types';
@@ -6,6 +6,7 @@ import { GenerateBpmnInput, LlmProvider, LlmRawBpmnOutput, LlmServiceError } fro
 const AssumptionSchema = z.object({
   question: z.string().min(3),
   assumption: z.string().min(3),
+  impact: z.enum(['high', 'medium', 'low']).default('medium'),
   elementIds: z.array(z.string()).default([]),
   sourceExcerpt: z.string().optional().default(''),
 });
@@ -139,13 +140,11 @@ export class VertexAiProvider implements LlmProvider {
   }
 
   async generate(input: GenerateBpmnInput, signal: AbortSignal): Promise<LlmRawBpmnOutput> {
-    const previousSemantic = input.previousBpmnXml
-      ? input.previousBpmnXml.replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/i, '').trim()
-      : '';
+    const previousSemantic = input.previousBpmnXml?.trim() || '';
 
     let userContent = `<process_description>\n${input.processDescription}\n</process_description>`;
     if (previousSemantic) {
-      userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nRefiná el diagrama anterior aplicando únicamente los cambios de <process_description> y conservando los IDs y elementos no afectados.`;
+      userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nConservá los elementos y ediciones manuales presentes en <previous_bpmn_xml> salvo que contradigan <process_description>, aplicando solo los cambios solicitados.`;
     }
     if (input.repairFeedback) {
       userContent += `\n\nEl intento anterior falló la validación BPMN con este error:\n${input.repairFeedback}\n\nCorregí exclusivamente ese defecto y devolvé un JSON válido.`;
@@ -170,13 +169,14 @@ export class VertexAiProvider implements LlmProvider {
                   properties: {
                     question: { type: Type.STRING },
                     assumption: { type: Type.STRING },
+                    impact: { type: Type.STRING, enum: ['high', 'medium', 'low'] },
                     elementIds: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                     },
                     sourceExcerpt: { type: Type.STRING },
                   },
-                  required: ['question', 'assumption', 'elementIds', 'sourceExcerpt'],
+                  required: ['question', 'assumption', 'impact', 'elementIds', 'sourceExcerpt'],
                 },
               },
             },
@@ -184,6 +184,9 @@ export class VertexAiProvider implements LlmProvider {
           },
           temperature: 0.2,
           maxOutputTokens: 32768,
+          thinkingConfig: {
+            thinkingLevel: input.mode === 'fast' ? ThinkingLevel.LOW : ThinkingLevel.MEDIUM,
+          },
           abortSignal: signal,
         },
       });
@@ -258,6 +261,7 @@ export class VertexAiProvider implements LlmProvider {
 
     return {
       ...validated.data,
+      finishReason: finishReason ? String(finishReason) : undefined,
       usage: usageMeta
         ? {
             promptTokens: usageMeta.promptTokenCount,

@@ -23,6 +23,9 @@ interface GroqChatResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
   };
   error?: { message?: string };
 }
@@ -47,13 +50,14 @@ export class GroqProvider implements LlmProvider {
   }
 
   async generate(input: GenerateBpmnInput, signal: AbortSignal): Promise<LlmRawBpmnOutput> {
-    const previousSemantic = input.previousBpmnXml
-      ? input.previousBpmnXml.replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/i, '').trim()
-      : '';
+    const previousSemantic =
+      input.previousBpmnXml && input.previousBpmnXml.length <= 4_000
+        ? input.previousBpmnXml.trim()
+        : '';
 
     let userContent = `<process_description>\n${input.processDescription}\n</process_description>`;
     if (previousSemantic) {
-      userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nRefiná el diagrama anterior aplicando únicamente los cambios de <process_description> y conservando los IDs y elementos no afectados.`;
+      userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nConservá los elementos y ediciones manuales presentes en <previous_bpmn_xml> salvo que contradigan <process_description>, aplicando solo los cambios solicitados.`;
     }
     if (input.repairFeedback) {
       userContent += `\n\nEl intento anterior falló la validación BPMN con este error:\n${input.repairFeedback}\n\nCorregí exclusivamente ese defecto y devolvé un JSON válido.`;
@@ -70,7 +74,7 @@ export class GroqProvider implements LlmProvider {
         body: JSON.stringify({
           model: this.model,
           temperature: 0.2,
-          max_tokens: 16384,
+          max_tokens: 6144,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: BPMN_SYSTEM_INSTRUCTION },
@@ -159,10 +163,12 @@ export class GroqProvider implements LlmProvider {
 
     return {
       ...validated.data,
+      finishReason: choice?.finish_reason,
       usage: data.usage
         ? {
             promptTokens: data.usage.prompt_tokens,
             outputTokens: data.usage.completion_tokens,
+            thinkingTokens: data.usage.completion_tokens_details?.reasoning_tokens,
             totalTokens: data.usage.total_tokens,
           }
         : undefined,

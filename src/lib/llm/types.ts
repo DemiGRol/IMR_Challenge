@@ -4,11 +4,15 @@ export interface GenerateBpmnInput {
   processDescription: string;
   previousBpmnXml?: string;
   repairFeedback?: string;
+  mode?: 'detailed' | 'fast';
 }
+
+export type AssumptionImpact = 'high' | 'medium' | 'low';
 
 export interface StructuredAssumption {
   question: string;
   assumption: string;
+  impact?: AssumptionImpact;
   elementIds: string[];
   sourceExcerpt?: string;
 }
@@ -17,6 +21,7 @@ export interface LlmRawBpmnOutput {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
   usage?: TokenUsage;
+  finishReason?: string;
 }
 
 export interface LlmProvider {
@@ -29,6 +34,7 @@ export interface LlmGenerateResult {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
   usage?: TokenUsage;
+  finishReason?: string;
   meta: {
     provider: string;
     model: string;

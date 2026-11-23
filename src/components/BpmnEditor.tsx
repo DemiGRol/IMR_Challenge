@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import {
   CodeIcon,
@@ -53,6 +53,7 @@ interface BpmnEditorProps {
   assumptionElementIds: string[];
   onElementSelectAssumption: (elementId: string) => void;
   onImportBpmn: (xml: string, filename: string) => void;
+  xmlGetterRef: MutableRefObject<(() => Promise<string | null>) | null>;
   onCreateBlank: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onNotify: (message: string) => void;
@@ -89,6 +90,7 @@ export default function BpmnEditor({
   assumptionElementIds,
   onElementSelectAssumption,
   onImportBpmn,
+  xmlGetterRef,
   onCreateBlank,
   onDirtyChange,
   onNotify,
@@ -149,14 +151,24 @@ export default function BpmnEditor({
     eventBus.on('canvas.viewbox.changed', onViewboxChanged);
     eventBus.on('element.click', onElementClick);
 
+    xmlGetterRef.current = async () => {
+      try {
+        const { xml: liveXml } = await modeler.saveXML({ format: false });
+        return liveXml || null;
+      } catch {
+        return null;
+      }
+    };
+
     return () => {
+      xmlGetterRef.current = null;
       eventBus.off('commandStack.changed', onStackChanged);
       eventBus.off('canvas.viewbox.changed', onViewboxChanged);
       eventBus.off('element.click', onElementClick);
       modeler.destroy();
       modelerRef.current = null;
     };
-  }, [onDirtyChange, syncZoom]);
+  }, [onDirtyChange, syncZoom, xmlGetterRef]);
 
   useEffect(() => {
     const modeler = modelerRef.current;
