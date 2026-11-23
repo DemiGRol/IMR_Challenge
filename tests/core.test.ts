@@ -6,6 +6,7 @@ import {
   compactBpmnForPrompt,
 } from '../src/lib/bpmn/validator.ts';
 import { separateOverlappingEdges } from '../src/lib/bpmn/layout-postprocess.ts';
+import { buildFallbackLayout } from '../src/lib/bpmn/fallback-layout.ts';
 import { buildCacheKey, getCachedBpmn, setCachedBpmn } from '../src/lib/cache.ts';
 import { checkRateLimit } from '../src/lib/rate-limit.ts';
 
@@ -108,4 +109,19 @@ test('compactBpmnForPrompt strips BPMNDiagram, comments, and whitespace', () => 
   assert.ok(!compact.includes('BPMNDiagram'));
   assert.ok(!compact.includes('<!-- note -->'));
   assert.ok(compact.includes('<bpmn:process'));
+});
+
+test('buildFallbackLayout generates valid BPMNDiagram DI even for cyclic graphs', () => {
+  const flowElements = [
+    { $type: 'bpmn:StartEvent', id: 'Start_1' },
+    { $type: 'bpmn:UserTask', id: 'Task_1' },
+    { $type: 'bpmn:EndEvent', id: 'End_1' },
+    { $type: 'bpmn:SequenceFlow', id: 'Flow_1', sourceRef: { id: 'Start_1' }, targetRef: { id: 'Task_1' } },
+    { $type: 'bpmn:SequenceFlow', id: 'Flow_2', sourceRef: { id: 'Task_1' }, targetRef: { id: 'End_1' } },
+    { $type: 'bpmn:SequenceFlow', id: 'Flow_Back', sourceRef: { id: 'Task_1' }, targetRef: { id: 'Start_1' } },
+  ];
+  const xml = buildFallbackLayout(VALID_LINEAR_XML, 'Process_1', flowElements);
+  assert.ok(xml.includes('BPMNDiagram_Fallback'));
+  assert.ok(xml.includes('bpmnElement="Task_1"'));
+  assert.ok(xml.includes('bpmnElement="Flow_Back"'));
 });
