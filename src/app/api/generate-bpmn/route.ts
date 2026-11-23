@@ -1,14 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { BpmnValidationError, validateAndLayoutBpmn } from '@/lib/bpmn/validator';
+import {
+  BpmnValidationError,
+  compactBpmnForPrompt,
+  countBpmnStats,
+  validateAndLayoutBpmn,
+} from '@/lib/bpmn/validator';
 import { buildCacheKey, getCachedBpmn, setCachedBpmn } from '@/lib/cache';
 import { ResilientLlmAdapter } from '@/lib/llm/adapter';
-import { GroqProvider } from '@/lib/llm/groq-provider';
+import { GoogleAiStudioProvider } from '@/lib/llm/gemini-studio-provider';
 import { LlmProvider, LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { logGenerationTelemetry } from '@/lib/telemetry';
+import { logGenerationTelemetry, TokenUsage } from '@/lib/telemetry';
+
+function mergeUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined {
+  if (!a && !b) return undefined;
+  return {
+    promptTokens: (a?.promptTokens ?? 0) + (b?.promptTokens ?? 0),
+    outputTokens: (a?.outputTokens ?? 0) + (b?.outputTokens ?? 0),
+    thinkingTokens: (a?.thinkingTokens ?? 0) + (b?.thinkingTokens ?? 0),
+    totalTokens: (a?.totalTokens ?? 0) + (b?.totalTokens ?? 0),
+  };
+}
 
 export const maxDuration = 300;
 
@@ -23,6 +38,7 @@ const RequestSchema = z.object({
     .max(4000, 'La descripción no puede superar los 4.000 caracteres.'),
   previousBpmnXml: z.string().max(150_000).optional(),
   mode: z.enum(['detailed', 'fast']).default('detailed'),
+  iterationMode: z.enum(['fresh', 'preserve-edits']).default('fresh'),
 });
 
 function getClientIp(req: NextRequest): string {
@@ -91,70 +107,85 @@ export async function POST(req: NextRequest) {
 
   const inputChars = parsed.data.processDescription.length;
   const mode = parsed.data.mode;
+  const preserveEdits =
+    parsed.data.iterationMode === 'preserve-edits' &&
+    Boolean(parsed.data.previousBpmnXml?.trim());
+  const compactedPreviousXml = preserveEdits
+    ? compactBpmnForPrompt(parsed.data.previousBpmnXml as string)
+    : undefined;
   const cacheKey = buildCacheKey(parsed.data.processDescription, mode);
-  const cachedEntry = getCachedBpmn(cacheKey);
-  if (cachedEntry) {
-    const totalLatencyMs = Math.round(performance.now() - startedAt);
-    logGenerationTelemetry({
-      requestId,
-      outcome: 'success',
-      httpStatus: 200,
-      errorCode: null,
-      provider: cachedEntry.provider,
-      model: cachedEntry.model,
-      fallbackUsed: false,
-      cached: true,
-      incremental: false,
-      latencyMs: totalLatencyMs,
-      attempts: 0,
-      repaired: false,
-      inputChars,
-      outputXmlBytes: Buffer.byteLength(cachedEntry.bpmnXml, 'utf8'),
-      assumptionsCount: cachedEntry.assumptions.length,
-    });
-    return NextResponse.json(
-      {
-        bpmnXml: cachedEntry.bpmnXml,
-        assumptions: cachedEntry.assumptions,
-        meta: {
-          provider: cachedEntry.provider,
-          model: cachedEntry.model,
-          latencyMs: totalLatencyMs,
-          attempts: 0,
-          repaired: false,
-          fallbackUsed: false,
-          cached: true,
-          incremental: false,
+
+  if (!preserveEdits) {
+    const cachedEntry = getCachedBpmn(cacheKey);
+    if (cachedEntry) {
+      const totalLatencyMs = Math.round(performance.now() - startedAt);
+      logGenerationTelemetry({
+        requestId,
+        outcome: 'success',
+        httpStatus: 200,
+        errorCode: null,
+        mode,
+        provider: cachedEntry.provider,
+        model: cachedEntry.model,
+        fallbackUsed: false,
+        cached: true,
+        incremental: false,
+        latencyMs: totalLatencyMs,
+        attempts: 0,
+        repaired: false,
+        inputChars,
+        outputXmlBytes: Buffer.byteLength(cachedEntry.bpmnXml, 'utf8'),
+        assumptionsCount: cachedEntry.assumptions.length,
+        validation: { passed: true, ...countBpmnStats(cachedEntry.bpmnXml) },
+      });
+      return NextResponse.json(
+        {
+          bpmnXml: cachedEntry.bpmnXml,
+          assumptions: cachedEntry.assumptions,
+          meta: {
+            provider: cachedEntry.provider,
+            model: cachedEntry.model,
+            latencyMs: totalLatencyMs,
+            attempts: 0,
+            repaired: false,
+            fallbackUsed: false,
+            cached: true,
+            incremental: false,
+          },
         },
-      },
-      { headers: { 'X-Request-Id': requestId } }
-    );
+        { headers: { 'X-Request-Id': requestId } }
+      );
+    }
   }
 
-  const incremental = Boolean(parsed.data.previousBpmnXml?.trim());
+  const incremental = preserveEdits;
   let attempts = 1;
   let repaired = false;
+  let initialValidationError: string | undefined;
 
   try {
-    const hasGroq = Boolean(process.env.GROQ_API_KEY?.trim());
-    const providers: LlmProvider[] =
-      mode === 'fast' && hasGroq
-        ? [new GroqProvider(), new VertexAiProvider()]
-        : hasGroq
-          ? [new VertexAiProvider(), new GroqProvider()]
-          : [new VertexAiProvider()];
+    const hasStudio = Boolean(process.env.GEMINI_API_KEY?.trim());
+    const hasVertex = Boolean(
+      process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON
+    );
+    const providers: LlmProvider[] = [];
+    if (hasVertex) providers.push(new VertexAiProvider());
+    if (hasStudio) providers.push(new GoogleAiStudioProvider());
     const adapter = new ResilientLlmAdapter(providers, 180_000);
     let result = await adapter.generate({
       processDescription: parsed.data.processDescription,
-      previousBpmnXml: parsed.data.previousBpmnXml,
+      previousBpmnXml: compactedPreviousXml,
+      mode,
     });
 
     let layoutedXml: string;
+    let totalUsage: TokenUsage | undefined = result.usage;
 
     try {
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
     } catch (validationErr) {
       if (!(validationErr instanceof BpmnValidationError)) throw validationErr;
+      initialValidationError = validationErr.message;
 
       const remainingMs = TOTAL_BUDGET_MS - (performance.now() - startedAt);
       if (remainingMs < MIN_REPAIR_BUDGET_MS) {
@@ -166,20 +197,24 @@ export async function POST(req: NextRequest) {
       result = await adapter.generate(
         {
           processDescription: parsed.data.processDescription,
-          previousBpmnXml: parsed.data.previousBpmnXml,
+          previousBpmnXml: compactedPreviousXml,
           repairFeedback: validationErr.message,
+          mode,
         },
         Math.round(remainingMs)
       );
+      totalUsage = mergeUsage(totalUsage, result.usage);
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);
     }
 
-    setCachedBpmn(cacheKey, {
-      bpmnXml: layoutedXml,
-      assumptions: result.assumptions,
-      provider: result.meta.provider,
-      model: result.meta.model,
-    });
+    if (!preserveEdits) {
+      setCachedBpmn(cacheKey, {
+        bpmnXml: layoutedXml,
+        assumptions: result.assumptions,
+        provider: result.meta.provider,
+        model: result.meta.model,
+      });
+    }
 
     const totalLatencyMs = Math.round(performance.now() - startedAt);
     logGenerationTelemetry({
@@ -187,8 +222,10 @@ export async function POST(req: NextRequest) {
       outcome: 'success',
       httpStatus: 200,
       errorCode: null,
+      mode,
       provider: result.meta.provider,
       model: result.meta.model,
+      finishReason: result.finishReason,
       fallbackUsed: result.meta.fallbackUsed,
       cached: false,
       incremental,
@@ -198,7 +235,12 @@ export async function POST(req: NextRequest) {
       inputChars,
       outputXmlBytes: Buffer.byteLength(layoutedXml, 'utf8'),
       assumptionsCount: result.assumptions.length,
-      usage: result.usage,
+      validation: {
+        passed: true,
+        ...countBpmnStats(layoutedXml),
+        initialError: initialValidationError,
+      },
+      usage: totalUsage,
     });
 
     return NextResponse.json(

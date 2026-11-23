@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateAndLayoutBpmn, BpmnValidationError } from '../src/lib/bpmn/validator.ts';
+import {
+  validateAndLayoutBpmn,
+  BpmnValidationError,
+  compactBpmnForPrompt,
+} from '../src/lib/bpmn/validator.ts';
+import { separateOverlappingEdges } from '../src/lib/bpmn/layout-postprocess.ts';
 import { buildCacheKey, getCachedBpmn, setCachedBpmn } from '../src/lib/cache.ts';
 import { checkRateLimit } from '../src/lib/rate-limit.ts';
 
@@ -72,4 +77,35 @@ test('rate limiter allows 10 requests and blocks the 11th', () => {
   const blocked = checkRateLimit(ip);
   assert.equal(blocked.allowed, false);
   assert.ok(blocked.retryAfterSec >= 1);
+});
+
+test('separateOverlappingEdges moves overlapping horizontal loop detours to distinct Y channels', () => {
+  const overlappingXml = `
+    <bpmndi:BPMNEdge id="Edge_1">
+      <omgdi:waypoint x="300" y="120" />
+      <omgdi:waypoint x="300" y="220" />
+      <omgdi:waypoint x="100" y="220" />
+      <omgdi:waypoint x="100" y="120" />
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_2">
+      <omgdi:waypoint x="200" y="120" />
+      <omgdi:waypoint x="200" y="220" />
+      <omgdi:waypoint x="450" y="220" />
+      <omgdi:waypoint x="450" y="120" />
+    </bpmndi:BPMNEdge>
+  `;
+  const separated = separateOverlappingEdges(overlappingXml);
+  assert.ok(separated.includes('y="220"'));
+  assert.ok(separated.includes('y="246"'));
+});
+
+test('compactBpmnForPrompt strips BPMNDiagram, comments, and whitespace', () => {
+  const withDi = `${VALID_LINEAR_XML.replace(
+    '</bpmn:definitions>',
+    '<!-- note --><bpmndi:BPMNDiagram id="D1"><bpmndi:BPMNPlane id="P1" /></bpmndi:BPMNDiagram></bpmn:definitions>'
+  )}`;
+  const compact = compactBpmnForPrompt(withDi);
+  assert.ok(!compact.includes('BPMNDiagram'));
+  assert.ok(!compact.includes('<!-- note -->'));
+  assert.ok(compact.includes('<bpmn:process'));
 });

@@ -9,5 +9,7 @@
 | T-06 | Validar semántica, errores, UX y seguridad | T-05 | P0 | verificado | `DEL-06` (`quality-validator`), `DEL-07..09` (`pro`), prueba en vivo con caso robusto (55s) y [issues-and-lessons.md](defense/issues-and-lessons.md) |
 | T-07 | Entrega reproducible y evidencia | T-05, T-06 | P0 | verificado | `README.md`, `master` (`6d21875`), desplegado en https://imr-challenge.vercel.app/ (Node 26.x, Fluid Compute) |
 | T-08 | Defensa y demo | T-03, T-07 | P0 | propuesta | |
+| T-09 | Instrumentación mínima de telemetría para experimentos V2–V4 | T-07 | P1 | verificado | [v1-stress-test.md](quality/v1-stress-test.md), `telemetry.ts` (`usage` acumulado, `finishReason`, `validation`, `mode`) |
+| T-10 | Experimentos comparativos V1–V3 y mejoras basadas en evidencia (`v0.5.0`) | T-09 | P1 | verificado | [v1-stress-test.md](quality/v1-stress-test.md), [ADR-005](architecture/decisions/ADR-005-tiered-llm-fallback.md) |
 
 P0: indispensable para entrega o proceso acordado. P1: mejora importante. P2: diferible. Revisar dependencias y estimaciones tras discovery; no declarar fechas intermedias confirmadas.
