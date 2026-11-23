@@ -1,5 +1,6 @@
 import { layoutProcess } from 'bpmn-auto-layout';
 import BpmnModdle from 'bpmn-moddle';
+import { buildFallbackLayout } from './fallback-layout.ts';
 import { separateOverlappingEdges } from './layout-postprocess.ts';
 
 const MAX_XML_BYTES = 200 * 1024;
@@ -33,6 +34,7 @@ interface ModdleFlowElement {
 
 interface ModdleProcess {
   $type: string;
+  id?: string;
   flowElements?: ModdleFlowElement[];
 }
 
@@ -160,15 +162,16 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
     }
   }
 
+  const processId = processes[0].id || 'Process_1';
   let layoutedXml: string;
   try {
     layoutedXml = separateOverlappingEdges(await layoutProcess(xml));
   } catch (err) {
-    const detail = err instanceof Error ? err.message.slice(0, 140) : '';
-    throw new BpmnValidationError(
-      detail
-        ? `No se pudo calcular el layout visual del diagrama BPMN (${detail}).`
-        : 'No se pudo calcular el layout visual del diagrama BPMN generado.'
+    console.warn('[validator] bpmn-auto-layout failed, using deterministic fallback layouter', {
+      detail: err instanceof Error ? err.message.slice(0, 140) : 'unknown',
+    });
+    layoutedXml = separateOverlappingEdges(
+      buildFallbackLayout(xml, processId, flowElements)
     );
   }
 
