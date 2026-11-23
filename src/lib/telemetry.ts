@@ -5,6 +5,14 @@ export interface TokenUsage {
   totalTokens?: number;
 }
 
+export interface ValidationTelemetry {
+  passed: boolean;
+  elementCount?: number;
+  gatewayCount?: number;
+  flowCount?: number;
+  initialError?: string;
+}
+
 export interface GenerationTelemetryEvent {
   event: 'bpmn_generation';
   timestamp: string;
@@ -12,8 +20,10 @@ export interface GenerationTelemetryEvent {
   outcome: 'success' | 'error';
   httpStatus: number;
   errorCode: string | null;
+  mode?: 'detailed' | 'fast';
   provider?: string;
   model?: string;
+  finishReason?: string;
   fallbackUsed?: boolean;
   cached?: boolean;
   incremental?: boolean;
@@ -23,6 +33,7 @@ export interface GenerationTelemetryEvent {
   inputChars: number;
   outputXmlBytes?: number;
   assumptionsCount?: number;
+  validation?: ValidationTelemetry;
   usage?: TokenUsage;
   estimatedCostUsd?: number;
 }

@@ -1,5 +1,6 @@
 import { layoutProcess } from 'bpmn-auto-layout';
 import BpmnModdle from 'bpmn-moddle';
+import { separateOverlappingEdges } from './layout-postprocess.ts';
 
 const MAX_XML_BYTES = 200 * 1024;
 const FORBIDDEN_PATTERNS = [
@@ -46,6 +47,34 @@ export class BpmnValidationError extends Error {
   }
 }
 
+export function compactBpmnForPrompt(xml: string): string {
+  return xml
+    .replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\s+xmlns:(?:bpmndi|dc|di|omgdc|omgdi|bioc|color)="[^"]*"/gi, '')
+    .replace(/\s+(?:exporter|exporterVersion)="[^"]*"/gi, '')
+    .replace(/>\s+</g, '><')
+    .trim()
+    .slice(0, 25_000);
+}
+
+export function countBpmnStats(xml: string): {
+  elementCount: number;
+  gatewayCount: number;
+  flowCount: number;
+} {
+  const flowCount = (xml.match(/<bpmn:sequenceFlow\b/g) || []).length;
+  const gatewayCount = (xml.match(/<bpmn:(?:exclusive|parallel)Gateway\b/g) || []).length;
+  const tasksAndEvents = (
+    xml.match(/<bpmn:(?:startEvent|endEvent|task|userTask|serviceTask)\b/g) || []
+  ).length;
+  return {
+    elementCount: tasksAndEvents + gatewayCount,
+    gatewayCount,
+    flowCount,
+  };
+}
+
 export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
   const xml = rawXml.replace(/^```xml\s*/i, '').replace(/\s*```$/i, '').trim();
 
@@ -63,9 +92,13 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
   let rootElement: ModdleDefinitions;
   try {
     const parsed = await moddle.fromXML(xml);
-    if (parsed.warnings && parsed.warnings.length > 0) {
+    const warnings = (parsed.warnings || []) as Array<{ message?: string }>;
+    const unresolved = warnings.find((w) =>
+      (w.message || '').toLowerCase().includes('unresolved reference')
+    );
+    if (unresolved) {
       throw new BpmnValidationError(
-        'El XML BPMN contiene elementos desconocidos o referencias sin resolver.'
+        `El XML BPMN tiene una referencia sin resolver: ${(unresolved.message || '').slice(0, 120)}`
       );
     }
     rootElement = parsed.rootElement as unknown as ModdleDefinitions;
@@ -129,10 +162,13 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
 
   let layoutedXml: string;
   try {
-    layoutedXml = await layoutProcess(xml);
-  } catch {
+    layoutedXml = separateOverlappingEdges(await layoutProcess(xml));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message.slice(0, 140) : '';
     throw new BpmnValidationError(
-      'No se pudo calcular el layout visual del diagrama BPMN generado.'
+      detail
+        ? `No se pudo calcular el layout visual del diagrama BPMN (${detail}).`
+        : 'No se pudo calcular el layout visual del diagrama BPMN generado.'
     );
   }
 

@@ -1,5 +1,9 @@
 import { GenerateBpmnInput, LlmGenerateResult, LlmProvider, LlmServiceError } from './types';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ResilientLlmAdapter {
   private readonly providers: LlmProvider[];
   private readonly timeoutMs: number;
@@ -30,6 +34,7 @@ export class ResilientLlmAdapter {
           bpmnXml: raw.bpmnXml,
           assumptions: raw.assumptions,
           usage: raw.usage,
+          finishReason: raw.finishReason,
           meta: {
             provider: provider.name,
             model: provider.model,
@@ -42,18 +47,21 @@ export class ResilientLlmAdapter {
       } catch (err) {
         lastError = err;
         const isLast = index === this.providers.length - 1;
-        const shouldFallback =
-          !isLast && (!(err instanceof LlmServiceError) || err.retryable);
+        const isTransient =
+          !(err instanceof LlmServiceError) || err.retryable;
 
-        if (!shouldFallback) {
-          if (err instanceof LlmServiceError) throw err;
-          throw new LlmServiceError(
-            'No se pudo obtener una respuesta válida del proveedor LLM. Intentá nuevamente.',
-            502,
-            'PROVIDER_ERROR',
-            false
-          );
+        if (!isLast && isTransient) {
+          await sleep(2500);
+          continue;
         }
+
+        if (err instanceof LlmServiceError) throw err;
+        throw new LlmServiceError(
+          'No se pudo obtener una respuesta válida del proveedor LLM. Intentá nuevamente.',
+          502,
+          'PROVIDER_ERROR',
+          false
+        );
       }
     }
 
