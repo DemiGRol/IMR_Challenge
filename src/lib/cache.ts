@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { StructuredAssumption } from '@/lib/llm/types';
+import type { ModelingRecommendation, StructuredAssumption } from '@/lib/llm/types';
 
 export interface CachedBpmnEntry {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
+  recommendations?: ModelingRecommendation[];
   provider: string;
   model: string;
   expiresAt: number;

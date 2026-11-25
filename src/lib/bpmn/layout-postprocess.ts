@@ -18,9 +18,20 @@ interface HorizontalSegment {
   y: number;
 }
 
+interface VerticalSegment {
+  edgeIdx: number;
+  wpIdx: number;
+  minY: number;
+  maxY: number;
+  x: number;
+}
+
 const LANE_GAP_PX = 26;
 const Y_TOLERANCE_PX = 6;
 const X_MARGIN_PX = 12;
+const CORRIDOR_GAP_PX = 16;
+const X_TOLERANCE_PX = 6;
+const Y_MARGIN_PX = 12;
 
 function extractWaypoints(edgeXml: string): Waypoint[] {
   const waypoints: Waypoint[] = [];
@@ -77,6 +88,7 @@ export function separateOverlappingEdges(layoutedXml: string): string {
 
   // Detectar segmentos horizontales intermedios (desvíos/bucles de >= 4 waypoints)
   const segments: HorizontalSegment[] = [];
+  const verticalSegments: VerticalSegment[] = [];
   edges.forEach((edge, edgeIdx) => {
     if (edge.waypoints.length < 4) return;
     for (let i = 1; i < edge.waypoints.length - 2; i++) {
@@ -91,59 +103,117 @@ export function separateOverlappingEdges(layoutedXml: string): string {
           y: (a.y + b.y) / 2,
         });
       }
+      if (Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) > 8) {
+        verticalSegments.push({
+          edgeIdx,
+          wpIdx: i,
+          minY: Math.min(a.y, b.y),
+          maxY: Math.max(a.y, b.y),
+          x: (a.x + b.x) / 2,
+        });
+      }
     }
   });
 
-  if (segments.length < 2) return layoutedXml;
-
-  // Agrupar segmentos que comparten la misma altura Y (±6px)
-  const bands: HorizontalSegment[][] = [];
-  for (const seg of segments) {
-    const band = bands.find((b) => Math.abs(b[0].y - seg.y) <= Y_TOLERANCE_PX);
-    if (band) {
-      band.push(seg);
-    } else {
-      bands.push([seg]);
-    }
-  }
-
+  const modifiedEdges = new Set<number>();
   const edgeDeltaY = new Map<number, number>();
 
-  for (const band of bands) {
-    if (band.length < 2) continue;
-    // Ordenar por inicio X para asignar carriles sin solapamiento (interval graph coloring)
-    band.sort((a, b) => a.minX - b.minX);
-    const laneEndX: number[] = [];
-
-    for (const seg of band) {
-      let lane = laneEndX.findIndex((endX) => endX + X_MARGIN_PX < seg.minX);
-      if (lane === -1) {
-        lane = laneEndX.length;
-        laneEndX.push(seg.maxX);
+  if (segments.length >= 2) {
+    // Agrupar segmentos que comparten la misma altura Y (±6px)
+    const bands: HorizontalSegment[][] = [];
+    for (const seg of segments) {
+      const band = bands.find((b) => Math.abs(b[0].y - seg.y) <= Y_TOLERANCE_PX);
+      if (band) {
+        band.push(seg);
       } else {
-        laneEndX[lane] = seg.maxX;
+        bands.push([seg]);
       }
+    }
 
-      if (lane > 0) {
-        const edge = edges[seg.edgeIdx];
-        const firstY = edge.waypoints[0].y;
-        const direction = seg.y >= firstY ? 1 : -1;
-        const deltaY = direction * lane * LANE_GAP_PX;
-        edge.waypoints[seg.wpIdx].y += deltaY;
-        edge.waypoints[seg.wpIdx + 1].y += deltaY;
-        edgeDeltaY.set(seg.edgeIdx, deltaY);
+    for (const band of bands) {
+      if (band.length < 2) continue;
+      // Ordenar por inicio X para asignar carriles sin solapamiento (interval graph coloring)
+      band.sort((a, b) => a.minX - b.minX);
+      const laneEndX: number[] = [];
+
+      for (const seg of band) {
+        let lane = laneEndX.findIndex((endX) => endX + X_MARGIN_PX < seg.minX);
+        if (lane === -1) {
+          lane = laneEndX.length;
+          laneEndX.push(seg.maxX);
+        } else {
+          laneEndX[lane] = seg.maxX;
+        }
+
+        if (lane > 0) {
+          const edge = edges[seg.edgeIdx];
+          const firstY = edge.waypoints[0].y;
+          const direction = seg.y >= firstY ? 1 : -1;
+          const deltaY = direction * lane * LANE_GAP_PX;
+          edge.waypoints[seg.wpIdx].y += deltaY;
+          edge.waypoints[seg.wpIdx + 1].y += deltaY;
+          edgeDeltaY.set(seg.edgeIdx, deltaY);
+          modifiedEdges.add(seg.edgeIdx);
+        }
       }
     }
   }
 
-  if (edgeDeltaY.size === 0) return layoutedXml;
+  if (verticalSegments.length >= 2) {
+    // Segunda pasada: separar segmentos verticales intermedios que comparten corredor X (±6px)
+    const xBands: VerticalSegment[][] = [];
+    for (const seg of verticalSegments) {
+      const band = xBands.find((b) => Math.abs(b[0].x - seg.x) <= X_TOLERANCE_PX);
+      if (band) {
+        band.push(seg);
+      } else {
+        xBands.push([seg]);
+      }
+    }
+
+    for (const band of xBands) {
+      if (band.length < 2) continue;
+      band.sort((a, b) => a.minY - b.minY);
+      const corridorEndY: number[] = [];
+
+      for (const seg of band) {
+        let corridor = corridorEndY.findIndex((endY) => endY + Y_MARGIN_PX < seg.minY);
+        if (corridor === -1) {
+          corridor = corridorEndY.length;
+          corridorEndY.push(seg.maxY);
+        } else {
+          corridorEndY[corridor] = seg.maxY;
+        }
+
+        if (corridor > 0) {
+          const edge = edges[seg.edgeIdx];
+          const firstX = edge.waypoints[0].x;
+          const lastX = edge.waypoints[edge.waypoints.length - 1].x;
+          const segX = edge.waypoints[seg.wpIdx].x;
+          let deltaX: number;
+          if (firstX < lastX && segX - CORRIDOR_GAP_PX <= firstX + 12) {
+            deltaX = corridor * 14;
+          } else {
+            const step = Math.ceil(corridor / 2);
+            const sign = corridor % 2 === 1 ? 1 : -1;
+            deltaX = sign * step * CORRIDOR_GAP_PX;
+          }
+          edge.waypoints[seg.wpIdx].x += deltaX;
+          edge.waypoints[seg.wpIdx + 1].x += deltaX;
+          modifiedEdges.add(seg.edgeIdx);
+        }
+      }
+    }
+  }
+
+  if (modifiedEdges.size === 0) return layoutedXml;
 
   // Reconstruir XML reemplazando solo los BPMNEdge modificados de atrás hacia adelante
   let result = layoutedXml;
   for (let i = edges.length - 1; i >= 0; i--) {
-    const delta = edgeDeltaY.get(i);
-    if (delta === undefined) continue;
+    if (!modifiedEdges.has(i)) continue;
     const edge = edges[i];
+    const delta = edgeDeltaY.get(i) ?? 0;
     const updatedEdge = replaceWaypoints(edge.fullMatch, edge.waypoints, delta);
     result = result.slice(0, edge.startIndex) + updatedEdge + result.slice(edge.endIndex);
   }

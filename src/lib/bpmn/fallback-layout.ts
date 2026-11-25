@@ -18,8 +18,23 @@ const START_X = 120;
 const START_Y = 120;
 
 function getNodeSize(type: string): { w: number; h: number } {
-  if (type === 'bpmn:StartEvent' || type === 'bpmn:EndEvent') return { w: 36, h: 36 };
-  if (type === 'bpmn:ExclusiveGateway' || type === 'bpmn:ParallelGateway') return { w: 50, h: 50 };
+  if (
+    type === 'bpmn:StartEvent' ||
+    type === 'bpmn:EndEvent' ||
+    type === 'bpmn:IntermediateCatchEvent' ||
+    type === 'bpmn:IntermediateThrowEvent' ||
+    type === 'bpmn:BoundaryEvent'
+  ) {
+    return { w: 36, h: 36 };
+  }
+  if (
+    type === 'bpmn:ExclusiveGateway' ||
+    type === 'bpmn:ParallelGateway' ||
+    type === 'bpmn:InclusiveGateway' ||
+    type === 'bpmn:EventBasedGateway'
+  ) {
+    return { w: 50, h: 50 };
+  }
   return { w: 100, h: 80 };
 }
 

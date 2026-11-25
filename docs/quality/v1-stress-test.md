@@ -114,9 +114,29 @@ Para decidir con evidencia (y no por intuición) si ampliar supuestos o cambiar 
 
 ---
 
-## 8. Resultados de Prueba V3 — Punto de quiebre verificado (22/11/2026)
+## 8. Resultados de Prueba V3 — Éxito tras corrección técnica `v0.5.1` (23/11/2026)
 
-- **Caso evaluado**: texto extremo de **2.872 caracteres** (proceso de compras con máximo nivel de detalle y excepciones).
-- **Resultado**: el sistema alcanzó su **techo operativo real** en modo `detailed` (razonamiento dinámico sin tope):
-  - Contención global sobre `gemini-4-hydrogen` (`429 RESOURCE_EXHAUSTED` en Vertex AI → `503 UNAVAILABLE` en Google AI Studio; `requestId: 894e160a-f70d-4089-97ec-99302f8d4977`, `57,3 s`).
-  - Combinado con V2 (`1.959` chars, `38` nodos, `15.460` *thinking tokens*, `196,3 s`), queda establecido empíricamente el **límite saludable del MVP**: procesos de hasta **~1.500–2.000 caracteres (~25–35 nodos)** en un único `<bpmn:process>` plano; por encima de ese umbral conviene descomponer en subprocesos (Fase 2) y acotar `thinkingLevel`.
+> **Corrección de conclusión previa**: queda **descartada** la hipótesis inicial de incapacidad de `gemini-4-hydrogen` para procesar la complejidad de V3. El fallo anterior fue un **defecto técnico** (`INC-14`: bug `this.grid[-1].length` en `bpmn-auto-layout@1.0.0` sumado a contención transitoria `429`/`503`), ya mitigado con `buildFallbackLayout()` y cubierto por test de regresión en `tests/core.test.ts`.
+
+### Métricas verificadas de V3 (`v0.5.1`)
+| Métrica | V2 (`v0.4.x`) | V3 (`v0.5.1`) | Variación |
+|---|---|---|---|
+| **Proveedor / Modelo** | Vertex AI / `gemini-4-hydrogen` | Vertex AI / `gemini-4-hydrogen` | — |
+| **Latencia LLM / HTTP total** | 196.318 ms (2 intentos) | **82.581 ms / 84.147 ms** | **−57%** |
+| **Intentos / Reparación / Fallback** | 2 / sí / no | **1 / no / no** | Sin reintento |
+| **Tokens (in / out / thinking / total)** | 2.189 / 3.911 / 15.460 / 21.560 *(solo intento 2)* | **2.442 / 4.309 / 8.521 / 15.272** | **−45% thinking** |
+| **Costo estimado** | ~\$0,09–\$0,10 total (2 intentos) | **\$0,032808** | **−65%+** |
+| **Estructura validada** | 38 elem / 16 gw / 47 flujos | **36 elem / 19 gw / 50 flujos** | Validación aprobada |
+
+### Hallazgos funcionales de V3
+- **Positivos**: representa las principales decisiones y excepciones de V3; los supuestos están mejor orientados a incertidumbres de negocio.
+- **Brechas pendientes (prioridad acordada)**:
+  - **P0 siguiente incremento**: soporte para **Pools, Lanes y Message Flows** (participantes, responsabilidades y comunicaciones entre organizaciones — a evaluar específicamente en **V4**).
+  - **Secundarias**: plazos expresados como texto en vez de `TimerEvent`; estados finales diferenciados (compra cancelada / completada / pendiente de pago); clasificación de actividades como `userTask` sin evidencia suficiente de gestión por aplicación; layout aún muy horizontal.
+
+### Auditoría de cobertura real de validaciones (`validator.ts` + `tests/core.test.ts`)
+- **Cubierto y verificado (10/10 tests en `npm test`)**: anti-XXE (`<!DOCTYPE`/`<!ENTITY`), anti-XSS (`<script`, `javascript:`, `on*=`), XML bien formado vía `bpmn-moddle`, rechazo de `unresolved reference`, allowlist estricta del MVP (`startEvent`, `endEvent`, `task`, `userTask`, `serviceTask`, `exclusiveGateway`, `parallelGateway`, `sequenceFlow`), IDs únicos, `sourceRef`/`targetRef` válidos, separación de canales en bucles (`separateOverlappingEdges`), compactación sin DI (`compactBpmnForPrompt`) y layout determinista de respaldo (`buildFallbackLayout`).
+- **Brechas actuales de validación (para el próximo incremento post-V4)**:
+  - No valida conectividad/alcanzabilidad BFS desde `StartEvent` ni nodos huérfanos.
+  - Rechaza explícitamente `bpmn:Collaboration`, `bpmn:Participant` (Pools), `bpmn:LaneSet`/`bpmn:Lane` y `bpmn:MessageFlow` (deberá ampliarse en el incremento de Colaboración).
+  - Artefactos `.bpmn` exportados de V1–V3: conservarlos en `tests/fixtures/` para ejecutar regresión automática contra `validateAndLayoutBpmn` en cada cambio futuro.
