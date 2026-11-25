@@ -33,6 +33,7 @@ export class ResilientLlmAdapter {
         return {
           bpmnXml: raw.bpmnXml,
           assumptions: raw.assumptions,
+          recommendations: raw.recommendations || [],
           usage: raw.usage,
           finishReason: raw.finishReason,
           meta: {

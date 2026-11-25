@@ -23,4 +23,10 @@ export const PROCESS_EXAMPLES: ProcessExample[] = [
     description:
       'Al firmar el contrato de un nuevo empleado, se inicia el proceso de incorporación. En paralelo, IT crea las cuentas de acceso y prepara la notebook, mientras Administración gestiona el alta legal. Cuando ambas actividades terminan, se realiza la inducción inicial y finaliza el onboarding.',
   },
+  {
+    id: 'collaboration-events',
+    label: 'Colaboración y eventos (V4)',
+    description:
+      'El proceso de la Empresa inicia al recibir un mensaje de solicitud de compra en el área de Compras. Primero, Finanzas verifica el presupuesto disponible; si no alcanza, se cierra como solicitud rechazada por error presupuestario. Si hay presupuesto, Compras envía la orden de compra al Proveedor externo y queda esperando la respuesta: si recibe la confirmación del Proveedor antes de las 48 horas, Finanzas procesa el pago y el proceso finaliza como compra completada; si se cumple el plazo de 48 horas sin respuesta, Compras emite una alerta de escalamiento por demora y finaliza como orden cancelada.',
+  },
 ];

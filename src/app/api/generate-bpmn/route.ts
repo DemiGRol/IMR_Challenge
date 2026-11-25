@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
         mode,
         provider: cachedEntry.provider,
         model: cachedEntry.model,
+        location: process.env.GCP_LOCATION || 'global',
         fallbackUsed: false,
         cached: true,
         incremental: false,
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
         {
           bpmnXml: cachedEntry.bpmnXml,
           assumptions: cachedEntry.assumptions,
+          recommendations: cachedEntry.recommendations || [],
           meta: {
             provider: cachedEntry.provider,
             model: cachedEntry.model,
@@ -211,6 +213,7 @@ export async function POST(req: NextRequest) {
       setCachedBpmn(cacheKey, {
         bpmnXml: layoutedXml,
         assumptions: result.assumptions,
+        recommendations: result.recommendations || [],
         provider: result.meta.provider,
         model: result.meta.model,
       });
@@ -225,6 +228,7 @@ export async function POST(req: NextRequest) {
       mode,
       provider: result.meta.provider,
       model: result.meta.model,
+      location: process.env.GCP_LOCATION || 'global',
       finishReason: result.finishReason,
       fallbackUsed: result.meta.fallbackUsed,
       cached: false,
@@ -247,6 +251,7 @@ export async function POST(req: NextRequest) {
       {
         bpmnXml: layoutedXml,
         assumptions: result.assumptions,
+        recommendations: result.recommendations || [],
         meta: {
           ...result.meta,
           latencyMs: totalLatencyMs,

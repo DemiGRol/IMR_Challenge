@@ -604,6 +604,31 @@ textarea:focus-visible {
   border: 1px solid var(--border);
 }
 
+.impact-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.recommendations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.recommendation-card {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.recommendation-card.active {
+  background: #eff6ff;
+  border-color: var(--primary);
+}
+
 .assumption-question {
   font-size: 0.84rem;
   font-weight: 700;

@@ -11,9 +11,16 @@ const AssumptionSchema = z.object({
   sourceExcerpt: z.string().optional().default(''),
 });
 
+const RecommendationSchema = z.object({
+  title: z.string().min(3),
+  explanation: z.string().min(3),
+  elementIds: z.array(z.string()).default([]),
+});
+
 const LlmOutputSchema = z.object({
   bpmnXml: z.string().min(20),
   assumptions: z.array(AssumptionSchema).default([]),
+  recommendations: z.array(RecommendationSchema).default([]),
 });
 
 function parseServiceAccount(raw: string | undefined): Record<string, unknown> {
@@ -179,8 +186,23 @@ export class VertexAiProvider implements LlmProvider {
                   required: ['question', 'assumption', 'impact', 'elementIds', 'sourceExcerpt'],
                 },
               },
+              recommendations: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    explanation: { type: Type.STRING },
+                    elementIds: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                  required: ['title', 'explanation', 'elementIds'],
+                },
+              },
             },
-            required: ['bpmnXml', 'assumptions'],
+            required: ['bpmnXml', 'assumptions', 'recommendations'],
           },
           temperature: 0.2,
           maxOutputTokens: 32768,

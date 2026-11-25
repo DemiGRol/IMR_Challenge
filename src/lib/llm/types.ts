@@ -17,9 +17,16 @@ export interface StructuredAssumption {
   sourceExcerpt?: string;
 }
 
+export interface ModelingRecommendation {
+  title: string;
+  explanation: string;
+  elementIds: string[];
+}
+
 export interface LlmRawBpmnOutput {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
+  recommendations?: ModelingRecommendation[];
   usage?: TokenUsage;
   finishReason?: string;
 }
@@ -33,6 +40,7 @@ export interface LlmProvider {
 export interface LlmGenerateResult {
   bpmnXml: string;
   assumptions: StructuredAssumption[];
+  recommendations?: ModelingRecommendation[];
   usage?: TokenUsage;
   finishReason?: string;
   meta: {
