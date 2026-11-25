@@ -37,9 +37,16 @@ interface StructuredAssumption {
   sourceExcerpt?: string;
 }
 
+interface ModelingRecommendation {
+  title: string;
+  explanation: string;
+  elementIds?: string[];
+}
+
 interface GenerateResponse {
   bpmnXml?: string;
   assumptions?: StructuredAssumption[];
+  recommendations?: ModelingRecommendation[];
   meta?: GenerateMeta;
   error?: string;
 }
@@ -91,7 +98,9 @@ export default function HomePage() {
   const [diagramSource, setDiagramSource] = useState<DiagramSource>('empty');
   const [isDirty, setIsDirty] = useState(false);
   const [assumptions, setAssumptions] = useState<StructuredAssumption[]>([]);
+  const [recommendations, setRecommendations] = useState<ModelingRecommendation[]>([]);
   const [activeAssumptionIdx, setActiveAssumptionIdx] = useState<number | null>(null);
+  const [activeRecommendationIdx, setActiveRecommendationIdx] = useState<number | null>(null);
   const [showSecondaryAssumptions, setShowSecondaryAssumptions] = useState(false);
   const [meta, setMeta] = useState<GenerateMeta | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,9 +117,16 @@ export default function HomePage() {
   const isValidLength = trimmedLength >= 10 && trimmedLength <= 4000;
 
   const highlightedElementIds =
-    activeAssumptionIdx !== null ? assumptions[activeAssumptionIdx]?.elementIds || [] : [];
+    activeAssumptionIdx !== null
+      ? assumptions[activeAssumptionIdx]?.elementIds || []
+      : activeRecommendationIdx !== null
+        ? recommendations[activeRecommendationIdx]?.elementIds || []
+        : [];
 
-  const allAssumptionElementIds = assumptions.flatMap((a) => a.elementIds || []);
+  const allAssumptionElementIds = [
+    ...assumptions.flatMap((a) => a.elementIds || []),
+    ...recommendations.flatMap((r) => r.elementIds || []),
+  ];
 
   const handleElementSelectAssumption = useCallback(
     (elementId: string) => {
@@ -118,10 +134,19 @@ export default function HomePage() {
       if (matchIdx !== -1) {
         setActiveTab('assumptions');
         setSidebarOpen(true);
+        setActiveRecommendationIdx(null);
         setActiveAssumptionIdx(matchIdx);
+        return;
+      }
+      const recIdx = recommendations.findIndex((r) => (r.elementIds || []).includes(elementId));
+      if (recIdx !== -1) {
+        setActiveTab('assumptions');
+        setSidebarOpen(true);
+        setActiveAssumptionIdx(null);
+        setActiveRecommendationIdx(recIdx);
       }
     },
-    [assumptions]
+    [assumptions, recommendations]
   );
 
   useEffect(() => {
@@ -195,7 +220,9 @@ export default function HomePage() {
       }
       setBpmnXml(xml);
       setAssumptions([]);
+      setRecommendations([]);
       setActiveAssumptionIdx(null);
+      setActiveRecommendationIdx(null);
       setMeta(null);
       setError(null);
       setDiagramSource('imported');
@@ -213,7 +240,9 @@ export default function HomePage() {
     }
     setBpmnXml(null);
     setAssumptions([]);
+    setRecommendations([]);
     setActiveAssumptionIdx(null);
+    setActiveRecommendationIdx(null);
     setMeta(null);
     setError(null);
     setDiagramSource('blank');
@@ -241,6 +270,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     setActiveAssumptionIdx(null);
+    setActiveRecommendationIdx(null);
 
     try {
       const liveXml =
@@ -274,12 +304,14 @@ export default function HomePage() {
       }
 
       const nextAssumptions = data.assumptions || [];
+      const nextRecommendations = data.recommendations || [];
       setBpmnXml(data.bpmnXml);
       setAssumptions(nextAssumptions);
+      setRecommendations(nextRecommendations);
       setShowSecondaryAssumptions(false);
       setMeta(data.meta || null);
       setDiagramSource('ai');
-      if (nextAssumptions.length > 0) {
+      if (nextAssumptions.length > 0 || nextRecommendations.length > 0) {
         setActiveTab('assumptions');
       }
     } catch {
@@ -362,7 +394,8 @@ export default function HomePage() {
               className={`tab-btn ${activeTab === 'assumptions' ? 'active' : ''}`}
               onClick={() => setActiveTab('assumptions')}
             >
-              Supuestos ({assumptions.length})
+              Supuestos ({assumptions.length}
+              {recommendations.length > 0 ? ` + ${recommendations.length} BPMN` : ''})
             </button>
           </div>
 
@@ -478,16 +511,55 @@ export default function HomePage() {
             </>
           ) : (
             <div className="assumptions-list">
-              {assumptions.length === 0 ? (
+              {assumptions.length === 0 && recommendations.length === 0 ? (
                 <div className="excerpt-box">
                   Todavía no hay supuestos registrados. Generá un diagrama desde la solapa{' '}
                   <strong>Descripción</strong> para analizar ambigüedades y trazabilidad.
                 </div>
               ) : (
                 <>
-                  <div className="examples-label">
-                    Hacé clic en una tarjeta para enfocar y resaltar los elementos en el diagrama:
-                  </div>
+                  {recommendations.length > 0 && (
+                    <div className="recommendations-section">
+                      <div className="examples-label">
+                        Recomendaciones BPMN ({recommendations.length}):
+                      </div>
+                      {recommendations.map((rec, rIdx) => {
+                        const isRecActive = activeRecommendationIdx === rIdx;
+                        const recCount = rec.elementIds?.length || 0;
+                        return (
+                          <button
+                            key={`rec-${rIdx}`}
+                            type="button"
+                            className={`assumption-card recommendation-card ${isRecActive ? 'active' : ''}`}
+                            onClick={() => {
+                              setActiveAssumptionIdx(null);
+                              setActiveRecommendationIdx(isRecActive ? null : rIdx);
+                            }}
+                          >
+                            <div className="assumption-top">
+                              <span className="impact-pill impact-info">Recomendación BPMN</span>
+                            </div>
+                            <div className="assumption-question">{rec.title}</div>
+                            <div className="assumption-answer">{rec.explanation}</div>
+                            <div className="assumption-meta">
+                              <span>
+                                {recCount > 0
+                                  ? `${recCount} elemento${recCount > 1 ? 's' : ''} en el diagrama`
+                                  : 'Sugerencia general de modelado'}
+                              </span>
+                              <span>{isRecActive ? 'Resaltado ✓' : 'Ubicar →'}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {assumptions.length > 0 && (
+                    <div className="examples-label">
+                      Hacé clic en una tarjeta para enfocar y resaltar los elementos en el diagrama:
+                    </div>
+                  )}
                   {(() => {
                     const indexed = assumptions.map((item, idx) => ({ item, idx }));
                     const primary = indexed.filter(({ item }) => item.impact === 'high');
@@ -509,7 +581,10 @@ export default function HomePage() {
                           key={idx}
                           type="button"
                           className={`assumption-card ${isActive ? 'active' : ''}`}
-                          onClick={() => setActiveAssumptionIdx(isActive ? null : idx)}
+                          onClick={() => {
+                            setActiveRecommendationIdx(null);
+                            setActiveAssumptionIdx(isActive ? null : idx);
+                          }}
                         >
                           <div className="assumption-top">
                             <span className={`impact-pill impact-${item.impact || 'medium'}`}>
