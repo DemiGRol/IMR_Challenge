@@ -1,0 +1,44 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre con la orden de mantenimiento tras reprogramar la producción por falta de confirmación del proveedor?",
+      "assumption": "Se asumió que la rama de escalamiento y reprogramación finaliza el flujo de esa instancia, sin reintentar automáticamente con otro proveedor.",
+      "impact": "high",
+      "elementIds": [
+        "Throw_EscalarDemora",
+        "Task_ReprogramarProduccion",
+        "End_Reprogramada"
+      ],
+      "sourceExcerpt": "se escala la demora a Gerencia de Planta y se reprograma la producción"
+    },
+    {
+      "question": "¿Qué sucede si la prueba operativa realizada por Calidad resulta insatisfactoria?",
+      "assumption": "Se asumió que la prueba operativa es exitosa y continúa directamente hacia la habilitación de la máquina y cierre de la orden.",
+      "impact": "high",
+      "elementIds": [
+        "Task_PruebaOperativa",
+        "Task_HabilitarCerrar"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina"
+    },
+    {
+      "question": "¿Qué área es responsable de habilitar la máquina y cerrar formalmente la orden de trabajo?",
+      "assumption": "Se asignó la actividad de habilitar la máquina y cerrar la orden al carril de Mantenimiento.",
+      "impact": "low",
+      "elementIds": [
+        "Task_HabilitarCerrar",
+        "Lane_Mantenimiento"
+      ],
+      "sourceExcerpt": "antes de habilitar la máquina y cerrar la orden"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Evento de escalamiento sin subproceso padre",
+      "explanation": "En BPMN 2.0, escalationEventDefinition se utiliza normalmente para escalar desde un subproceso hacia un nivel superior. Se conservó el evento de escalamiento solicitado en el flujo principal.",
+      "elementIds": [
+        "Throw_EscalarDemora"
+      ]
+    }
+  ]
+}

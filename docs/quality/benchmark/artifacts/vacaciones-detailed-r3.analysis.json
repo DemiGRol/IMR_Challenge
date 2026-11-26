@@ -1,0 +1,33 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Se valida el saldo de días disponibles antes de la aprobación o qué ocurre si es insuficiente al descontar?",
+      "assumption": "Se asumió que el saldo se descuenta directamente tras la aprobación sin una compuerta previa de validación de saldo insuficiente.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Registrar",
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿Existe un plazo máximo para que el responsable revise y responda la solicitud?",
+      "assumption": "No se modeló un temporizador ni escalamiento por demora en la revisión del responsable.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Revisar"
+      ],
+      "sourceExcerpt": ""
+    },
+    {
+      "question": "¿El aviso de rechazo lo envía automáticamente el sistema o manualmente el responsable?",
+      "assumption": "Se modeló como una tarea neutra en el carril del responsable al no especificarse si el envío del rechazo es automático.",
+      "impact": "low",
+      "elementIds": [
+        "Task_NotificarRechazo"
+      ],
+      "sourceExcerpt": "el empleado recibe un aviso con el motivo"
+    }
+  ],
+  "recommendations": []
+}

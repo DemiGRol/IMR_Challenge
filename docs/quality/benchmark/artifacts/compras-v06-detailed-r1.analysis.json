@@ -1,0 +1,85 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Quién es el destinatario del recordatorio automático enviado tras 24 horas sin resolución?",
+      "assumption": "Se modeló como una tarea de servicio interna dentro del carril de Finanzas asumiendo que notifica al analista asignado o a su supervisor.",
+      "impact": "medium",
+      "elementIds": [
+        "Boundary_24h",
+        "Task_EnviarRecordatorio"
+      ],
+      "sourceExcerpt": "se envía automáticamente un recordatorio sin cancelar la tarea"
+    },
+    {
+      "question": "¿Qué ocurre si el analista de Finanzas rechaza la compra en el portal ERP?",
+      "assumption": "Se asumió que toda solicitud que supera la evaluación presupuestaria es aprobada en el ERP, ya que no se especificó un flujo de rechazo manual.",
+      "impact": "high",
+      "elementIds": [
+        "Task_AprobarERP"
+      ],
+      "sourceExcerpt": "un analista de Finanzas revisa y aprueba la compra"
+    },
+    {
+      "question": "¿Se notifica al solicitante o a otras áreas cuando la solicitud es rechazada por políticas o cancelada por demora?",
+      "assumption": "Se asumió que el proceso finaliza directamente en los eventos de fin sin enviar notificaciones adicionales al solicitante.",
+      "impact": "high",
+      "elementIds": [
+        "End_RechazoPoliticas",
+        "End_OrdenCancelada"
+      ],
+      "sourceExcerpt": "la solicitud se rechaza con un cierre de error"
+    },
+    {
+      "question": "¿Cómo se gestiona un error técnico bancario respecto al proveedor o a posibles reintentos?",
+      "assumption": "Se asumió que el proceso aborta definitivamente sin reintentos ni envío de aviso de cancelación al proveedor.",
+      "impact": "high",
+      "elementIds": [
+        "Boundary_ErrorPago",
+        "End_ErrorPago"
+      ],
+      "sourceExcerpt": "la operación se interrumpe de inmediato y finaliza con error de pago"
+    },
+    {
+      "question": "¿Cuándo y cómo entrega el proveedor los bultos físicos para que Logística los inspeccione?",
+      "assumption": "Se asumió que la recepción física ya ocurrió o se coordina implícitamente tras el pago antes de ejecutar la inspección de bultos.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Inspeccionar"
+      ],
+      "sourceExcerpt": "Logística inspecciona físicamente cada bulto recibido en paralelo"
+    },
+    {
+      "question": "¿El solicitante es un actor externo a la empresa o pertenece a un área interna no detallada?",
+      "assumption": "No se creó un Pool adicional para el solicitante dado que solo se listaron tres áreas internas y un proveedor externo; los mensajes de inicio y fin quedan dentro del Pool de la Empresa.",
+      "impact": "low",
+      "elementIds": [
+        "StartEvent_1",
+        "End_Exitoso"
+      ],
+      "sourceExcerpt": "enviando una notificación de cierre exitoso al solicitante"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo presupuestario debería modelarse como un evento de fin convencional",
+      "explanation": "En BPMN 2.0, un rechazo por políticas presupuestarias es un resultado esperado del negocio y no una falla técnica; se recomienda usar un evento de fin convencional (o de mensaje si se notifica al solicitante) en lugar de errorEventDefinition. Se conservó el evento de error en el XML según lo solicitado explícitamente.",
+      "elementIds": [
+        "End_RechazoPoliticas"
+      ]
+    },
+    {
+      "title": "El evento de escalamiento requiere un subproceso padre para ser capturado",
+      "explanation": "Un intermediateThrowEvent con escalationEventDefinition suele emplearse dentro de un subproceso para ser capturado por un boundaryEvent en el nivel superior. Al no existir un subproceso padre, la alerta emitida no tiene un receptor definido en el diagrama. Se mantuvo tal como fue solicitado en la descripción.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    },
+    {
+      "title": "La cancelación por vencimiento de 48 horas podría finalizar sin evento de error",
+      "explanation": "La falta de respuesta del proveedor tras 48 horas representa un desenlace de negocio por vencimiento de plazo más que una excepción técnica, por lo que conviene modelarlo con un evento de fin convencional o de mensaje. Se conservó errorEventDefinition para respetar el texto.",
+      "elementIds": [
+        "End_OrdenCancelada"
+      ]
+    }
+  ]
+}

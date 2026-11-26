@@ -1,0 +1,44 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si el empleado no cuenta con saldo suficiente de días disponibles?",
+      "assumption": "Se asumió que el empleado posee saldo suficiente o que el portal lo valida al registrar la solicitud, sin modelar un rechazo por falta de días.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Registrar",
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿Existe un plazo máximo para que el responsable del área revise y responda la solicitud?",
+      "assumption": "No se modeló un evento de temporizador ni escalamiento por demora en la revisión del responsable.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Revisar"
+      ],
+      "sourceExcerpt": "El responsable del área revisa la disponibilidad del equipo"
+    },
+    {
+      "question": "¿El empleado puede corregir o reenviar la solicitud luego de recibir un rechazo?",
+      "assumption": "Se asumió que el rechazo cierra definitivamente la solicitud sin posibilidad de reenvío dentro de la misma instancia.",
+      "impact": "medium",
+      "elementIds": [
+        "Gateway_Aprobacion",
+        "EndEvent_Rechazada"
+      ],
+      "sourceExcerpt": "recibe un aviso con el motivo y el pedido queda cerrado"
+    },
+    {
+      "question": "¿El descuento del saldo y el envío del aviso de rechazo son realizados automáticamente por el portal de RRHH?",
+      "assumption": "Se modeló el descuento de días como tarea genérica de RRHH y el aviso de rechazo como notificación automática del sistema en el carril de RRHH.",
+      "impact": "low",
+      "elementIds": [
+        "Task_Descontar",
+        "Task_NotificarRechazo"
+      ],
+      "sourceExcerpt": "el empleado recibe un aviso con el motivo"
+    }
+  ],
+  "recommendations": []
+}

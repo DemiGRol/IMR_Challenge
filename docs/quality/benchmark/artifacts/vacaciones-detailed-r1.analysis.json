@@ -1,0 +1,43 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Se valida automáticamente si el empleado tiene saldo de días disponibles antes de enviar la solicitud al responsable?",
+      "assumption": "Se asumió que no hay validación previa de saldo y que RRHH verifica y descuenta los días recién tras la aprobación.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Registrar",
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿Qué ocurre si al momento de descontar los días RRHH detecta que el saldo disponible es insuficiente?",
+      "assumption": "Se asumió que el saldo siempre es suficiente al aprobarse la solicitud y que el descuento se ejecuta sin excepciones.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿El responsable del área tiene un plazo máximo para aprobar o rechazar la solicitud antes de que escale o caduque?",
+      "assumption": "Se asumió que no existe un tiempo límite ni escalamiento automático para la revisión del responsable.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Revisar"
+      ],
+      "sourceExcerpt": "El responsable del área revisa la disponibilidad del equipo"
+    },
+    {
+      "question": "¿El empleado puede modificar y reenviar una solicitud rechazada o debe iniciar un nuevo pedido?",
+      "assumption": "Se asumió que el rechazo cierra definitivamente la solicitud sin flujo de corrección ni apelación.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_NotificarRechazo",
+        "End_Rechazada"
+      ],
+      "sourceExcerpt": "el pedido queda cerrado"
+    }
+  ],
+  "recommendations": []
+}

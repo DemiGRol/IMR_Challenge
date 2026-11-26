@@ -1,0 +1,42 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si la prueba operativa realizada por Calidad falla?",
+      "assumption": "Se asumió que la prueba operativa siempre resulta exitosa y permite habilitar la máquina y cerrar la orden.",
+      "impact": "high",
+      "elementIds": [
+        "Task_PruebaOperativa",
+        "Task_CerrarOrden"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina y cerrar la orden"
+    },
+    {
+      "question": "¿La confirmación del proveedor implica que los repuestos ya están disponibles para reparar o existe una etapa intermedia de recepción?",
+      "assumption": "Se asumió que tras recibir la confirmación del proveedor los repuestos quedan disponibles para continuar con la reparación.",
+      "impact": "medium",
+      "elementIds": [
+        "Catch_Confirmacion",
+        "Gw_StockMerge"
+      ],
+      "sourceExcerpt": "espera su confirmación hasta un máximo de 72 horas"
+    },
+    {
+      "question": "¿Qué área es responsable de habilitar la máquina tras la prueba operativa?",
+      "assumption": "Se asignó la habilitación de la máquina y el cierre de la orden al área de Mantenimiento.",
+      "impact": "low",
+      "elementIds": [
+        "Task_CerrarOrden"
+      ],
+      "sourceExcerpt": "habilitar la máquina y cerrar la orden"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Uso de evento de escalamiento sin subproceso padre",
+      "explanation": "En BPMN 2.0, escalationEventDefinition se utiliza habitualmente para escalar desde un subproceso hacia su proceso padre. En un flujo plano entre áreas puede modelarse con una tarea de notificación, pero se conservó el evento de escalamiento según lo solicitado en la descripción.",
+      "elementIds": [
+        "Throw_Escalar"
+      ]
+    }
+  ]
+}

@@ -10,13 +10,34 @@ import { buildFallbackLayout } from './fallback-layout.ts';
 import { separateOverlappingEdges } from './layout-postprocess.ts';
 
 const MAX_XML_BYTES = 200 * 1024;
+const NCNAME_REGEX = /^[A-Za-z_][A-Za-z0-9._-]{0,127}$/;
 const FORBIDDEN_PATTERNS = [
   /<!DOCTYPE/i,
   /<!ENTITY/i,
   /<script\b/i,
   /javascript:/i,
-  /\bon[a-z]+\s*=/i,
+  /\bon(?:click|dblclick|load|unload|error|abort|mouseover|mouseout|mouseenter|mouseleave|mousedown|mouseup|mousemove|focus|blur|keydown|keyup|keypress|submit|change|input|reset|scroll|resize|contextmenu|drag\w*|drop|touch\w*|pointer\w*|animation\w*|transition\w*)\s*=/i,
 ];
+
+function assertNoForbiddenPatterns(xml: string): void {
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(xml)) {
+      throw new BpmnValidationError('El XML generado contiene directivas o etiquetas no permitidas.');
+    }
+  }
+}
+
+function assertValidId(id: string | undefined, elementLabel: string): string {
+  if (!id) {
+    throw new BpmnValidationError(`Cada ${elementLabel} debe tener un atributo id.`);
+  }
+  if (!NCNAME_REGEX.test(id)) {
+    throw new BpmnValidationError(
+      `El identificador BPMN "${id.slice(0, 40)}" no cumple el formato NCName válido.`
+    );
+  }
+  return id;
+}
 
 const ALLOWED_FLOW_TYPES = new Set([
   'bpmn:StartEvent',
@@ -107,11 +128,7 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
     throw new BpmnValidationError('El XML BPMN generado excede el tamaño máximo permitido.');
   }
 
-  for (const pattern of FORBIDDEN_PATTERNS) {
-    if (pattern.test(xml)) {
-      throw new BpmnValidationError('El XML generado contiene directivas o etiquetas no permitidas.');
-    }
-  }
+  assertNoForbiddenPatterns(xml);
 
   const moddle = new BpmnModdle();
   let rootElement: CollabDefinitions;
@@ -150,18 +167,16 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
   let nonEmptyProcesses = 0;
 
   for (const proc of processes) {
-    if (!proc.id) {
-      throw new BpmnValidationError('Cada elemento <bpmn:process> debe tener un atributo id.');
+    const procId = assertValidId(proc.id, '<bpmn:process>');
+    if (allIds.has(procId)) {
+      throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${procId}.`);
     }
-    if (allIds.has(proc.id)) {
-      throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${proc.id}.`);
-    }
-    allIds.add(proc.id);
-    processById.set(proc.id, proc);
+    allIds.add(procId);
+    processById.set(procId, proc);
 
     const flowElements = (proc.flowElements || []) as ModdleFlowElement[];
     const flowNodeIds = new Set<string>();
-    processNodeIds.set(proc.id, flowNodeIds);
+    processNodeIds.set(procId, flowNodeIds);
 
     if (flowElements.length === 0) {
       continue;
@@ -177,18 +192,16 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
           `El proceso contiene un elemento fuera del subconjunto soportado: ${el.$type}.`
         );
       }
-      if (!el.id) {
-        throw new BpmnValidationError('Todos los elementos BPMN deben tener un atributo id.');
+      const elId = assertValidId(el.id, `elemento ${el.$type}`);
+      if (allIds.has(elId)) {
+        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${elId}.`);
       }
-      if (allIds.has(el.id)) {
-        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${el.id}.`);
-      }
-      allIds.add(el.id);
+      allIds.add(elId);
       if (el.$type !== 'bpmn:SequenceFlow') {
-        flowNodeIds.add(el.id);
-        nodeTypeById.set(el.id, el.$type);
+        flowNodeIds.add(elId);
+        nodeTypeById.set(elId, el.$type);
         if (el.$type === 'bpmn:BoundaryEvent') {
-          boundaryIds.add(el.id);
+          boundaryIds.add(elId);
         }
       }
     }
@@ -231,23 +244,22 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
 
     for (const laneSet of proc.laneSets || []) {
       if (laneSet.id) {
+        assertValidId(laneSet.id, '<bpmn:laneSet>');
         if (allIds.has(laneSet.id)) {
           throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${laneSet.id}.`);
         }
         allIds.add(laneSet.id);
       }
       for (const lane of laneSet.lanes || []) {
-        if (!lane.id) {
-          throw new BpmnValidationError('Cada <bpmn:lane> debe tener un atributo id.');
+        const laneId = assertValidId(lane.id, '<bpmn:lane>');
+        if (allIds.has(laneId)) {
+          throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${laneId}.`);
         }
-        if (allIds.has(lane.id)) {
-          throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${lane.id}.`);
-        }
-        allIds.add(lane.id);
+        allIds.add(laneId);
         for (const ref of lane.flowNodeRef || []) {
           if (!ref.id || !flowNodeIds.has(ref.id)) {
             throw new BpmnValidationError(
-              `El carril ${lane.id} referencia un nodo inexistente: ${ref.id || 'vacío'}.`
+              `El carril ${laneId} referencia un nodo inexistente: ${ref.id || 'vacío'}.`
             );
           }
         }
@@ -261,6 +273,7 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
 
   if (collaboration) {
     if (collaboration.id) {
+      assertValidId(collaboration.id, '<bpmn:collaboration>');
       if (allIds.has(collaboration.id)) {
         throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${collaboration.id}.`);
       }
@@ -274,35 +287,31 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
 
     const nodeToPoolId = new Map<string, string>();
     for (const part of participants) {
-      if (!part.id) {
-        throw new BpmnValidationError('Cada <bpmn:participant> debe tener un atributo id.');
+      const partId = assertValidId(part.id, '<bpmn:participant>');
+      if (allIds.has(partId)) {
+        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${partId}.`);
       }
-      if (allIds.has(part.id)) {
-        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${part.id}.`);
-      }
-      allIds.add(part.id);
-      nodeToPoolId.set(part.id, part.id);
+      allIds.add(partId);
+      nodeToPoolId.set(partId, partId);
 
       if (part.processRef?.id) {
         if (!processById.has(part.processRef.id)) {
           throw new BpmnValidationError(
-            `El participante ${part.id} referencia un proceso inexistente: ${part.processRef.id}.`
+            `El participante ${partId} referencia un proceso inexistente: ${part.processRef.id}.`
           );
         }
         for (const nodeId of processNodeIds.get(part.processRef.id) || []) {
-          nodeToPoolId.set(nodeId, part.id);
+          nodeToPoolId.set(nodeId, partId);
         }
       }
     }
 
     for (const mf of collaboration.messageFlows || []) {
-      if (!mf.id) {
-        throw new BpmnValidationError('Cada <bpmn:messageFlow> debe tener un atributo id.');
+      const mfId = assertValidId(mf.id, '<bpmn:messageFlow>');
+      if (allIds.has(mfId)) {
+        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${mfId}.`);
       }
-      if (allIds.has(mf.id)) {
-        throw new BpmnValidationError(`Se detectó un id BPMN duplicado: ${mf.id}.`);
-      }
-      allIds.add(mf.id);
+      allIds.add(mfId);
 
       const src = mf.sourceRef?.id;
       const tgt = mf.targetRef?.id;
@@ -310,12 +319,12 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
       const tgtPool = tgt ? nodeToPoolId.get(tgt) : undefined;
       if (!src || !tgt || !srcPool || !tgtPool) {
         throw new BpmnValidationError(
-          `El flujo de mensaje ${mf.id} tiene sourceRef o targetRef inválido.`
+          `El flujo de mensaje ${mfId} tiene sourceRef o targetRef inválido.`
         );
       }
       if (srcPool === tgtPool) {
         throw new BpmnValidationError(
-          `El flujo de mensaje ${mf.id} no puede conectar elementos del mismo Pool (${srcPool}).`
+          `El flujo de mensaje ${mfId} no puede conectar elementos del mismo Pool (${srcPool}).`
         );
       }
     }
@@ -356,6 +365,8 @@ export async function validateAndLayoutBpmn(rawXml: string): Promise<string> {
   ) {
     throw new BpmnValidationError('El layout BPMN no generó correctamente el bloque DI.');
   }
+
+  assertNoForbiddenPatterns(layoutedXml);
 
   return layoutedXml;
 }

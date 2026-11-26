@@ -1,0 +1,33 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre con la orden de trabajo si el proveedor no confirma en 72 horas y se reprograma la producción?",
+      "assumption": "Se asumió que la rama de demora finaliza tras reprogramar la producción, sin retomar automáticamente la reparación.",
+      "impact": "high",
+      "elementIds": [
+        "Task_ReprogramarProd",
+        "End_Reprogramado"
+      ],
+      "sourceExcerpt": "se escala la demora a Gerencia de Planta y se reprograma la producción"
+    },
+    {
+      "question": "¿Qué sucede si la prueba operativa realizada por Calidad falla?",
+      "assumption": "Se asumió un flujo exitoso tras la prueba operativa hacia la habilitación de la máquina, sin ciclo de retrabajo.",
+      "impact": "high",
+      "elementIds": [
+        "Task_PruebaOperativa",
+        "Task_HabilitarCerrar"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Uso de escalationEventDefinition sin subproceso padre",
+      "explanation": "En BPMN 2.0, un evento de escalamiento (escalationEventDefinition) suele utilizarse dentro de un subproceso para notificar a un proceso padre. Se conservó el evento de escalamiento en el flujo principal según lo descrito, aunque también podría modelarse como una tarea de notificación interna.",
+      "elementIds": [
+        "Throw_EscalarDemora"
+      ]
+    }
+  ]
+}

@@ -1,9 +1,21 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { BrandIcon, PanelIcon, PlusIcon, SparklesIcon } from '@/components/Icons';
+import { FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import {
+  AlertCircleIcon,
+  BrandIcon,
+  CheckIcon,
+  HelpCircleIcon,
+  MoonIcon,
+  PanelIcon,
+  PlusIcon,
+  SparklesIcon,
+  SunIcon,
+} from '@/components/Icons';
 import { PROCESS_EXAMPLES } from '@/components/ProcessExamples';
+import ProductTour, { TOUR_STORAGE_KEY } from '@/components/ProductTour';
 
 const BpmnEditor = dynamic(() => import('@/components/BpmnEditor'), {
   ssr: false,
@@ -88,33 +100,143 @@ function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
   );
 }
 
+function stripBpmnDi(xml: string): string {
+  return xml
+    .replace(/<(?:[a-zA-Z0-9_-]+:)?BPMNDiagram[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?BPMNDiagram>/gi, '')
+    .trim();
+}
+
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<SidebarTab>('description');
-  const [generationMode, setGenerationMode] = useState<GenerationMode>('detailed');
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
   const [description, setDescription] = useState('');
   const [activeExampleId, setActiveExampleId] = useState<string | null>(null);
   const [bpmnXml, setBpmnXml] = useState<string | null>(null);
+  const [loadRevision, setLoadRevision] = useState(0);
   const [blankTrigger, setBlankTrigger] = useState(0);
   const [diagramSource, setDiagramSource] = useState<DiagramSource>('empty');
   const [isDirty, setIsDirty] = useState(false);
   const [assumptions, setAssumptions] = useState<StructuredAssumption[]>([]);
   const [recommendations, setRecommendations] = useState<ModelingRecommendation[]>([]);
+  const [resolvedIndices, setResolvedIndices] = useState<number[]>([]);
+  const [resolvedHistory, setResolvedHistory] = useState<string[]>([]);
+  const [showResolvedAssumptions, setShowResolvedAssumptions] = useState(false);
   const [activeAssumptionIdx, setActiveAssumptionIdx] = useState<number | null>(null);
   const [activeRecommendationIdx, setActiveRecommendationIdx] = useState<number | null>(null);
   const [showSecondaryAssumptions, setShowSecondaryAssumptions] = useState(false);
   const [meta, setMeta] = useState<GenerateMeta | null>(null);
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [tourOpen, setTourOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const xmlGetterRef = useRef<(() => Promise<string | null>) | null>(null);
+  const pendingImportRef = useRef<{ filename: string; prevSource: DiagramSource } | null>(null);
+
+  useEffect(() => {
+    const currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    setTheme(currentTheme);
+
+    const dsFont = document.documentElement.dataset.fontSize;
+    if (dsFont === 'sm' || dsFont === 'md' || dsFont === 'lg') {
+      setFontSize(dsFont);
+    }
+
+    let timerId: number | undefined;
+    try {
+      if (window.localStorage.getItem(TOUR_STORAGE_KEY) !== 'true') {
+        timerId = window.setTimeout(() => setTourOpen(true), 500);
+      }
+    } catch {
+      // Ignora restricciones de localStorage.
+    }
+    return () => {
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
+  }, []);
+
+  const handleFontSizeChange = useCallback((nextSize: 'sm' | 'md' | 'lg') => {
+    document.documentElement.dataset.fontSize = nextSize;
+    try {
+      window.localStorage.setItem('imr_font_size', nextSize);
+    } catch {
+      // Ignora errores de almacenamiento.
+    }
+    setFontSize(nextSize);
+  }, []);
+
+  const handleToggleTheme = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const nextTheme = theme === 'dark' ? 'light' : 'dark';
+      const root = document.documentElement;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = rect.width > 0 ? rect.left + rect.width / 2 : window.innerWidth - 60;
+      const y = rect.height > 0 ? rect.top + rect.height / 2 : 28;
+      root.style.setProperty('--theme-x', `${x}px`);
+      root.style.setProperty('--theme-y', `${y}px`);
+
+      const applyTheme = () => {
+        root.dataset.theme = nextTheme;
+        try {
+          window.localStorage.setItem('imr_theme', nextTheme);
+        } catch {
+          // Ignora errores de almacenamiento.
+        }
+        setTheme(nextTheme);
+      };
+
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      type ViewTransitionDoc = Document & {
+        startViewTransition?: (cb: () => void) => { ready: Promise<void> };
+      };
+      const doc = document as ViewTransitionDoc;
+
+      if (!prefersReduced && typeof doc.startViewTransition === 'function') {
+        doc.startViewTransition(() => {
+          flushSync(() => {
+            applyTheme();
+          });
+        });
+        return;
+      }
+
+      root.classList.add('theme-transitioning');
+      applyTheme();
+      window.setTimeout(() => root.classList.remove('theme-transitioning'), 340);
+    },
+    [theme]
+  );
+
+  const handleBeforeTourStep = useCallback((stepIndex: number) => {
+    if (stepIndex === 0 || stepIndex === 1) {
+      setSidebarOpen(true);
+      setActiveTab('description');
+    } else if (stepIndex === 3) {
+      setSidebarOpen(true);
+      setActiveTab('assumptions');
+    }
+  }, []);
+
+  const handleFocusDescription = useCallback(() => {
+    setSidebarOpen(true);
+    setActiveTab('description');
+    window.setTimeout(() => textareaRef.current?.focus(), 60);
+  }, []);
 
   const trimmedLength = description.trim().length;
   const isValidLength = trimmedLength >= 10 && trimmedLength <= 4000;
+
+  const resolvedSet = new Set(resolvedIndices);
+  const pendingAssumptionsCount = assumptions.filter((_, idx) => !resolvedSet.has(idx)).length;
 
   const highlightedElementIds =
     activeAssumptionIdx !== null
@@ -124,7 +246,9 @@ export default function HomePage() {
         : [];
 
   const allAssumptionElementIds = [
-    ...assumptions.flatMap((a) => a.elementIds || []),
+    ...assumptions
+      .filter((_, idx) => !resolvedSet.has(idx))
+      .flatMap((a) => a.elementIds || []),
     ...recommendations.flatMap((r) => r.elementIds || []),
   ];
 
@@ -203,13 +327,6 @@ export default function HomePage() {
     }, 40);
   };
 
-  const confirmOverwriteIfDirty = (): boolean => {
-    if (!isDirty) return true;
-    return window.confirm(
-      'Tenés cambios manuales en el diagrama actual. ¿Querés reemplazarlo?'
-    );
-  };
-
   const handleImportBpmn = useCallback(
     (xml: string, filename: string) => {
       if (
@@ -218,17 +335,36 @@ export default function HomePage() {
       ) {
         return;
       }
+      pendingImportRef.current = { filename, prevSource: diagramSource };
       setBpmnXml(xml);
-      setAssumptions([]);
-      setRecommendations([]);
-      setActiveAssumptionIdx(null);
-      setActiveRecommendationIdx(null);
-      setMeta(null);
-      setError(null);
-      setDiagramSource('imported');
-      showToast(`Diagrama "${filename}" importado.`);
+      setLoadRevision((prev) => prev + 1);
     },
-    [isDirty, showToast]
+    [diagramSource, isDirty]
+  );
+
+  const handleImportResult = useCallback(
+    (ok: boolean) => {
+      const pending = pendingImportRef.current;
+      if (!pending) return;
+      pendingImportRef.current = null;
+      if (ok) {
+        setAssumptions([]);
+        setRecommendations([]);
+        setResolvedIndices([]);
+        setResolvedHistory([]);
+        setShowResolvedAssumptions(false);
+        setActiveAssumptionIdx(null);
+        setActiveRecommendationIdx(null);
+        setMeta(null);
+        setError(null);
+        setDiagramSource('imported');
+        showToast(`Diagrama "${pending.filename}" importado.`);
+      } else {
+        setDiagramSource(pending.prevSource === 'imported' ? 'empty' : pending.prevSource);
+        showToast(`No se pudo cargar "${pending.filename}" en el editor.`);
+      }
+    },
+    [showToast]
   );
 
   const handleCreateBlank = useCallback(() => {
@@ -241,6 +377,9 @@ export default function HomePage() {
     setBpmnXml(null);
     setAssumptions([]);
     setRecommendations([]);
+    setResolvedIndices([]);
+    setResolvedHistory([]);
+    setShowResolvedAssumptions(false);
     setActiveAssumptionIdx(null);
     setActiveRecommendationIdx(null);
     setMeta(null);
@@ -275,13 +414,14 @@ export default function HomePage() {
     try {
       const liveXml =
         iterationMode === 'preserve-edits' ? await xmlGetterRef.current?.() : null;
+      const semanticPreviousXml = liveXml ? stripBpmnDi(liveXml) : undefined;
 
       const res = await fetch('/api/generate-bpmn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           processDescription: description.trim(),
-          previousBpmnXml: liveXml || undefined,
+          previousBpmnXml: semanticPreviousXml || undefined,
           mode: generationMode,
           iterationMode,
         }),
@@ -305,9 +445,16 @@ export default function HomePage() {
 
       const nextAssumptions = data.assumptions || [];
       const nextRecommendations = data.recommendations || [];
+      pendingImportRef.current = null;
       setBpmnXml(data.bpmnXml);
+      setLoadRevision((prev) => prev + 1);
       setAssumptions(nextAssumptions);
       setRecommendations(nextRecommendations);
+      setResolvedIndices([]);
+      if (iterationMode === 'fresh') {
+        setResolvedHistory([]);
+      }
+      setShowResolvedAssumptions(false);
       setShowSecondaryAssumptions(false);
       setMeta(data.meta || null);
       setDiagramSource('ai');
@@ -318,6 +465,94 @@ export default function HomePage() {
       setError('Error de conexión con el servidor. Verificá tu red e intentá nuevamente.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleResolvedAssumption = (idx: number) => {
+    const question = assumptions[idx]?.question?.trim();
+    const isResolved = resolvedIndices.includes(idx);
+    if (isResolved) {
+      setResolvedIndices((prev) => prev.filter((i) => i !== idx));
+      if (question) {
+        setResolvedHistory((prev) => prev.filter((q) => q !== question));
+      }
+    } else {
+      setResolvedIndices((prev) => [...prev, idx]);
+      if (question) {
+        setResolvedHistory((prev) => (prev.includes(question) ? prev : [...prev, question]));
+      }
+      if (activeAssumptionIdx === idx) {
+        setActiveAssumptionIdx(null);
+      }
+    }
+  };
+
+  const handleReanalyzeDiagram = async () => {
+    if (analyzing || loading || diagramSource === 'empty') return;
+    setAnalyzing(true);
+    setError(null);
+    setActiveAssumptionIdx(null);
+    setActiveRecommendationIdx(null);
+
+    try {
+      const liveXml = await xmlGetterRef.current?.();
+      if (!liveXml) {
+        showToast('No se pudo leer el diagrama BPMN actual para analizar.');
+        return;
+      }
+
+      const compactXml = stripBpmnDi(liveXml);
+      const res = await fetch('/api/analyze-bpmn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentBpmnXml: compactXml,
+          processDescription: description.trim(),
+          resolvedQuestions: resolvedHistory.slice(-30),
+          mode: generationMode,
+        }),
+      });
+
+      let data: {
+        assumptions?: StructuredAssumption[];
+        recommendations?: ModelingRecommendation[];
+        meta?: GenerateMeta;
+        error?: string;
+      } = {};
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        showToast(
+          res.status === 504
+            ? 'El análisis superó el tiempo máximo de espera del servidor.'
+            : 'El servidor devolvió una respuesta inesperada al analizar.'
+        );
+        return;
+      }
+      if (!res.ok) {
+        showToast(data.error || 'No se pudo re-analizar el diagrama actual.');
+        return;
+      }
+
+      const nextAssumptions = data.assumptions || [];
+      const nextRecommendations = data.recommendations || [];
+      setAssumptions(nextAssumptions);
+      setRecommendations(nextRecommendations);
+      setResolvedIndices([]);
+      setShowResolvedAssumptions(false);
+      setShowSecondaryAssumptions(false);
+      if (data.meta) {
+        setMeta({ ...data.meta, incremental: true });
+      }
+      showToast(
+        nextAssumptions.length === 0 && nextRecommendations.length === 0
+          ? 'No se detectaron nuevos supuestos ni observaciones BPMN.'
+          : `Análisis actualizado: ${nextAssumptions.length} supuesto${nextAssumptions.length === 1 ? '' : 's'} y ${nextRecommendations.length} recomendación${nextRecommendations.length === 1 ? '' : 'es'}.`
+      );
+    } catch {
+      showToast('Error de conexión al re-analizar el diagrama.');
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -343,16 +578,21 @@ export default function HomePage() {
           ? { label: 'Importado (.bpmn)', className: 'badge' }
           : { label: 'Sin diagrama', className: 'badge' };
 
+  const hasDiagram = diagramSource !== 'empty' && (Boolean(bpmnXml) || blankTrigger > 0);
+  const activeStep =
+    activeTab === 'assumptions' && hasDiagram ? 3 : hasDiagram ? 2 : 1;
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="header-left">
           <button
             type="button"
-            className="tool-btn"
+            className="icon-btn"
             onClick={() => setSidebarOpen((open) => !open)}
             aria-expanded={sidebarOpen}
             title={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
+            aria-label={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
           >
             <PanelIcon />
           </button>
@@ -360,14 +600,114 @@ export default function HomePage() {
             <BrandIcon />
           </span>
           <h1 className="brand-title">IMR BPMN Studio</h1>
-          <span className="badge">BPMN 2.0</span>
+          <span className="badge header-label-desktop">BPMN 2.0</span>
         </div>
 
+        <nav className="workflow-stepper" aria-label="Flujo de trabajo">
+          <button
+            type="button"
+            className={`step-pill ${activeStep === 1 ? 'active' : ''} ${
+              activeStep > 1 || trimmedLength >= 10 ? 'done' : ''
+            }`}
+            onClick={handleFocusDescription}
+          >
+            <span className="step-num">1</span>
+            <span>Describir</span>
+          </button>
+          <span className="step-line" aria-hidden="true" />
+          <button
+            type="button"
+            className={`step-pill ${activeStep === 2 ? 'active' : ''} ${
+              hasDiagram && activeStep > 2 ? 'done' : ''
+            }`}
+            onClick={() => {
+              if (!hasDiagram && isValidLength && !loading) {
+                void generateDiagram();
+              } else {
+                setActiveTab('description');
+              }
+            }}
+          >
+            <span className="step-num">2</span>
+            <span>Modelar</span>
+          </button>
+          <span className="step-line" aria-hidden="true" />
+          <button
+            type="button"
+            className={`step-pill ${activeStep === 3 ? 'active' : ''} ${
+              hasDiagram && assumptions.length > 0 && pendingAssumptionsCount === 0 ? 'done' : ''
+            }`}
+            onClick={() => {
+              setSidebarOpen(true);
+              setActiveTab('assumptions');
+            }}
+          >
+            <span className="step-num">3</span>
+            <span>Auditar</span>
+            {pendingAssumptionsCount > 0 && (
+              <span className="step-count">{pendingAssumptionsCount}</span>
+            )}
+          </button>
+        </nav>
+
         <div className="header-right">
-          <span className={statusBadge.className}>{statusBadge.label}</span>
+          <span className={statusBadge.className}>
+            <span className="status-dot" aria-hidden="true" />
+            <span>{statusBadge.label}</span>
+          </span>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={() => setTourOpen(true)}
+            title="Abrir guía interactiva de la plataforma"
+          >
+            <HelpCircleIcon />
+            <span className="header-label-desktop">Guía</span>
+          </button>
+          <div className="font-size-control" role="group" aria-label="Tamaño de texto">
+            <button
+              type="button"
+              className="font-size-btn size-sm"
+              aria-pressed={fontSize === 'sm'}
+              onClick={() => handleFontSizeChange('sm')}
+              title="Texto chico"
+              aria-label="Texto chico"
+            >
+              A
+            </button>
+            <button
+              type="button"
+              className="font-size-btn size-md"
+              aria-pressed={fontSize === 'md'}
+              onClick={() => handleFontSizeChange('md')}
+              title="Texto mediano (predeterminado)"
+              aria-label="Texto mediano"
+            >
+              A
+            </button>
+            <button
+              type="button"
+              className="font-size-btn size-lg"
+              aria-pressed={fontSize === 'lg'}
+              onClick={() => handleFontSizeChange('lg')}
+              title="Texto grande"
+              aria-label="Texto grande"
+            >
+              A
+            </button>
+          </div>
+          <button
+            type="button"
+            className="icon-btn theme-toggle"
+            onClick={handleToggleTheme}
+            aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+          >
+            {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+          </button>
           <button type="button" className="tool-btn" onClick={handleCreateBlank} disabled={loading}>
             <PlusIcon />
-            <span>Nuevo en blanco</span>
+            <span className="header-label-desktop">Nuevo en blanco</span>
           </button>
         </div>
       </header>
@@ -390,114 +730,134 @@ export default function HomePage() {
             <button
               type="button"
               role="tab"
+              data-tour="assumptions-tab"
               aria-selected={activeTab === 'assumptions'}
               className={`tab-btn ${activeTab === 'assumptions' ? 'active' : ''}`}
               onClick={() => setActiveTab('assumptions')}
             >
-              Supuestos ({assumptions.length}
-              {recommendations.length > 0 ? ` + ${recommendations.length} BPMN` : ''})
+              <span>Supuestos</span>
+              {(pendingAssumptionsCount > 0 || recommendations.length > 0) && (
+                <span className="badge-count">
+                  {pendingAssumptionsCount}
+                  {recommendations.length > 0 ? `+${recommendations.length}` : ''}
+                </span>
+              )}
             </button>
           </div>
 
           {activeTab === 'description' ? (
             <>
               <form onSubmit={handleSubmit}>
-                <label htmlFor="process-description" className="field-label">
-                  <span>Descripción del proceso</span>
-                  <span className="char-count mono">{trimmedLength} / 4.000</span>
-                </label>
-                <textarea
-                  ref={textareaRef}
-                  id="process-description"
-                  className="process-textarea"
-                  placeholder="Describí los pasos, decisiones y resultados del proceso de negocio..."
-                  value={description}
-                  onChange={(e) => {
-                    setDescription(e.target.value);
-                    setActiveExampleId(null);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  maxLength={4000}
-                  disabled={loading}
-                />
-
-                {trimmedLength === 0 && (
-                  <div className="examples-group">
-                    <span className="examples-label">Ejemplos precargados:</span>
-                    <div className="examples-list">
-                      {PROCESS_EXAMPLES.map((example) => (
-                        <button
-                          key={example.id}
-                          type="button"
-                          className={`chip-btn ${activeExampleId === example.id ? 'active' : ''}`}
-                          disabled={loading}
-                          onClick={() => {
-                            setDescription(example.description);
-                            setActiveExampleId(example.id);
-                            setError(null);
-                          }}
-                        >
-                          {example.label}
-                        </button>
-                      ))}
-                    </div>
+                <div data-tour="description-input">
+                  <label htmlFor="process-description" className="field-label">
+                    <span>Descripción del proceso</span>
+                    <span className={`char-count mono ${isValidLength ? 'valid' : ''}`}>
+                      {trimmedLength} / 4.000
+                    </span>
+                  </label>
+                  <div className="textarea-shell">
+                    <textarea
+                      ref={textareaRef}
+                      id="process-description"
+                      className="process-textarea"
+                      placeholder="Describí los pasos, decisiones y resultados del proceso de negocio..."
+                      value={description}
+                      onChange={(e) => {
+                        setDescription(e.target.value);
+                        setActiveExampleId(null);
+                      }}
+                      onKeyDown={handleKeyDown}
+                      maxLength={4000}
+                      disabled={loading}
+                    />
                   </div>
-                )}
 
-                <div className="sidebar-tabs" style={{ marginTop: 10, marginBottom: 10 }} role="group" aria-label="Modo de generación">
-                  <button
-                    type="button"
-                    className={`tab-btn ${generationMode === 'detailed' ? 'active' : ''}`}
-                    disabled={loading}
-                    onClick={() => setGenerationMode('detailed')}
-                  >
-                    Detallado
-                  </button>
-                  <button
-                    type="button"
-                    className={`tab-btn ${generationMode === 'fast' ? 'active' : ''}`}
-                    disabled={loading}
-                    onClick={() => setGenerationMode('fast')}
-                  >
-                    Rápido
-                  </button>
+                  {trimmedLength === 0 && (
+                    <div className="examples-group">
+                      <span className="examples-label">Ejemplos precargados:</span>
+                      <div className="examples-list">
+                        {PROCESS_EXAMPLES.map((example) => (
+                          <button
+                            key={example.id}
+                            type="button"
+                            className={`chip-btn ${activeExampleId === example.id ? 'active' : ''}`}
+                            disabled={loading}
+                            onClick={() => {
+                              setDescription(example.description);
+                              setActiveExampleId(example.id);
+                              setError(null);
+                            }}
+                          >
+                            {example.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  type="submit"
-                  className="primary-btn"
-                  disabled={loading || !isValidLength}
-                >
-                  <SparklesIcon />
-                  <span>
-                    {loading
-                      ? 'Generando diagrama...'
-                      : isDirty
-                        ? 'Refinar conservando mis ediciones'
-                        : bpmnXml
-                          ? 'Regenerar diagrama BPMN'
-                          : 'Generar diagrama BPMN'}
-                  </span>
-                </button>
-                {isDirty && (
+                <div data-tour="generate-controls">
+                  <div className="sidebar-tabs" style={{ marginTop: 12, marginBottom: 8 }} role="group" aria-label="Modo de generación">
+                    <button
+                      type="button"
+                      className={`tab-btn ${generationMode === 'fast' ? 'active' : ''}`}
+                      disabled={loading}
+                      onClick={() => setGenerationMode('fast')}
+                    >
+                      Rápido
+                    </button>
+                    <button
+                      type="button"
+                      className={`tab-btn ${generationMode === 'detailed' ? 'active' : ''}`}
+                      disabled={loading}
+                      onClick={() => setGenerationMode('detailed')}
+                    >
+                      Detallado
+                    </button>
+                  </div>
+                  <p className="mode-hint">
+                    {generationMode === 'fast'
+                      ? 'Menor latencia y costo; ideal para primeros borradores e iteraciones frecuentes.'
+                      : 'Mayor profundidad de razonamiento para reglas complejas o descripciones ambiguas.'}
+                  </p>
+
                   <button
-                    type="button"
-                    className="tool-btn"
-                    style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                    type="submit"
+                    className={`primary-btn ${loading ? 'is-loading' : ''}`}
                     disabled={loading || !isValidLength}
-                    onClick={() => void generateDiagram('fresh')}
                   >
-                    Regenerar desde cero (descartar ediciones)
+                    <SparklesIcon />
+                    <span>
+                      {loading
+                        ? 'Generando diagrama...'
+                        : isDirty
+                          ? 'Refinar conservando mis ediciones'
+                          : bpmnXml
+                            ? 'Regenerar diagrama BPMN'
+                            : 'Generar diagrama BPMN'}
+                    </span>
                   </button>
-                )}
-                <div className="shortcut-hint">
-                  Atajo: <span className="mono">Ctrl + Enter</span> · Editá la descripción completa
+                  {isDirty && (
+                    <button
+                      type="button"
+                      className="tool-btn ghost-danger-btn"
+                      style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                      disabled={loading || !isValidLength}
+                      onClick={() => void generateDiagram('fresh')}
+                    >
+                      Regenerar desde cero (descartar ediciones)
+                    </button>
+                  )}
+                  <div className="shortcut-hint">
+                    Atajo: <span className="mono">Ctrl + Enter</span> · Editá la descripción completa
+                  </div>
                 </div>
               </form>
 
               {error && (
                 <div className="status-box status-error" role="alert">
-                  <span>{error}</span>
+                  <AlertCircleIcon />
+                  <span style={{ flex: 1 }}>{error}</span>
                   <button
                     type="button"
                     className="retry-btn"
@@ -511,10 +871,40 @@ export default function HomePage() {
             </>
           ) : (
             <div className="assumptions-list">
+              {diagramSource !== 'empty' && (
+                <div
+                  className={`reanalyze-box ${
+                    (assumptions.length > 0 && pendingAssumptionsCount === 0) || isDirty
+                      ? 'ready'
+                      : ''
+                  }`}
+                >
+                  <div className="reanalyze-hint">
+                    {assumptions.length > 0 && pendingAssumptionsCount === 0
+                      ? 'Todos los supuestos fueron marcados como resueltos. Podés auditar si quedan nuevas ambigüedades sobre el diagrama actual.'
+                      : isDirty
+                        ? 'Hay ediciones manuales en el diagrama. Podés re-analizar la versión en vivo sin sobrescribir el dibujo.'
+                        : 'Auditá supuestos pendientes y recomendaciones sobre el diagrama actual.'}
+                  </div>
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    style={{ width: '100%', justifyContent: 'center' }}
+                    disabled={analyzing || loading}
+                    onClick={() => void handleReanalyzeDiagram()}
+                  >
+                    <SparklesIcon />
+                    <span>
+                      {analyzing ? 'Analizando diagrama actual...' : 'Re-analizar diagrama actual'}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {assumptions.length === 0 && recommendations.length === 0 ? (
                 <div className="excerpt-box">
                   Todavía no hay supuestos registrados. Generá un diagrama desde la solapa{' '}
-                  <strong>Descripción</strong> para analizar ambigüedades y trazabilidad.
+                  <strong>Descripción</strong> o usá <strong>Re-analizar diagrama actual</strong> si ya cargaste o editaste uno.
                 </div>
               ) : (
                 <>
@@ -555,19 +945,24 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {assumptions.length > 0 && (
+                  {pendingAssumptionsCount > 0 && (
                     <div className="examples-label">
-                      Hacé clic en una tarjeta para enfocar y resaltar los elementos en el diagrama:
+                      Hacé clic en una tarjeta para enfocar los elementos en el diagrama:
                     </div>
                   )}
                   {(() => {
                     const indexed = assumptions.map((item, idx) => ({ item, idx }));
-                    const primary = indexed.filter(({ item }) => item.impact === 'high');
-                    const secondary = indexed.filter(({ item }) => item.impact !== 'high');
+                    const pending = indexed.filter(({ idx }) => !resolvedSet.has(idx));
+                    const resolvedItems = indexed.filter(({ idx }) => resolvedSet.has(idx));
+                    const primary = pending.filter(({ item }) => item.impact === 'high');
+                    const secondary = pending.filter(({ item }) => item.impact !== 'high');
                     const visible =
-                      primary.length === 0 || showSecondaryAssumptions ? indexed : primary;
+                      primary.length === 0 || showSecondaryAssumptions ? pending : primary;
 
-                    const renderCard = ({ item, idx }: { item: StructuredAssumption; idx: number }) => {
+                    const renderCard = (
+                      { item, idx }: { item: StructuredAssumption; idx: number },
+                      isResolved: boolean
+                    ) => {
                       const isActive = activeAssumptionIdx === idx;
                       const count = item.elementIds?.length || 0;
                       const impactLabel =
@@ -576,20 +971,52 @@ export default function HomePage() {
                           : item.impact === 'low'
                             ? 'Detalle menor'
                             : 'Impacto medio';
+                      const toggleCard = () => {
+                        setActiveRecommendationIdx(null);
+                        setActiveAssumptionIdx(isActive ? null : idx);
+                      };
                       return (
-                        <button
+                        <div
                           key={idx}
-                          type="button"
-                          className={`assumption-card ${isActive ? 'active' : ''}`}
-                          onClick={() => {
-                            setActiveRecommendationIdx(null);
-                            setActiveAssumptionIdx(isActive ? null : idx);
+                          role="button"
+                          tabIndex={0}
+                          className={`assumption-card impact-border-${item.impact || 'medium'} ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''}`}
+                          onClick={toggleCard}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleCard();
+                            }
                           }}
                         >
                           <div className="assumption-top">
                             <span className={`impact-pill impact-${item.impact || 'medium'}`}>
                               {impactLabel}
                             </span>
+                            <div className="assumption-actions">
+                              <button
+                                type="button"
+                                className="resolve-btn"
+                                title={
+                                  isResolved
+                                    ? 'Volver a marcar este supuesto como pendiente'
+                                    : 'Marcar como resuelto en el seguimiento (no modifica el diagrama automáticamente)'
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleResolvedAssumption(idx);
+                                }}
+                              >
+                                {isResolved ? (
+                                  'Reabrir'
+                                ) : (
+                                  <>
+                                    <CheckIcon />
+                                    <span>Marcar como resuelto</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="assumption-question">{item.question}</div>
                           <div className="assumption-answer">{item.assumption}</div>
@@ -617,13 +1044,13 @@ export default function HomePage() {
                               </button>
                             </div>
                           )}
-                        </button>
+                        </div>
                       );
                     };
 
                     return (
                       <>
-                        {visible.map(renderCard)}
+                        {visible.map((entry) => renderCard(entry, false))}
                         {primary.length > 0 && secondary.length > 0 && (
                           <button
                             type="button"
@@ -635,6 +1062,22 @@ export default function HomePage() {
                               ? 'Ocultar supuestos secundarios'
                               : `Ver ${secondary.length} supuesto${secondary.length > 1 ? 's' : ''} secundario${secondary.length > 1 ? 's' : ''}`}
                           </button>
+                        )}
+                        {resolvedItems.length > 0 && (
+                          <div className="resolved-section">
+                            <button
+                              type="button"
+                              className="tool-btn"
+                              style={{ width: '100%', justifyContent: 'center' }}
+                              onClick={() => setShowResolvedAssumptions((s) => !s)}
+                            >
+                              {showResolvedAssumptions
+                                ? `Ocultar resueltos (${resolvedItems.length})`
+                                : `Ver supuestos resueltos (${resolvedItems.length})`}
+                            </button>
+                            {showResolvedAssumptions &&
+                              resolvedItems.map((entry) => renderCard(entry, true))}
+                          </div>
                         )}
                       </>
                     );
@@ -667,6 +1110,7 @@ export default function HomePage() {
 
         <BpmnEditor
           xml={bpmnXml}
+          loadRevision={loadRevision}
           blankTrigger={blankTrigger}
           loading={loading}
           elapsedSec={elapsedSec}
@@ -674,12 +1118,20 @@ export default function HomePage() {
           assumptionElementIds={allAssumptionElementIds}
           onElementSelectAssumption={handleElementSelectAssumption}
           onImportBpmn={handleImportBpmn}
+          onImportResult={handleImportResult}
           xmlGetterRef={xmlGetterRef}
           onCreateBlank={handleCreateBlank}
+          onFocusDescription={handleFocusDescription}
           onDirtyChange={setIsDirty}
           onNotify={showToast}
         />
       </main>
+
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        onBeforeStep={handleBeforeTourStep}
+      />
 
       {toast && (
         <div className="toast" role="status" aria-live="polite">

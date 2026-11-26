@@ -1,0 +1,48 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Quién recibe el recordatorio automático cuando transcurren 24 horas sin resolución en el ERP?",
+      "assumption": "Se asumió que el recordatorio interno se envía automáticamente al analista de Finanzas responsable de la aprobación.",
+      "impact": "medium",
+      "elementIds": [
+        "Boundary_24h",
+        "Task_EnviarRecordatorio"
+      ],
+      "sourceExcerpt": "si transcurren 24 horas sin resolución, se envía automáticamente un recordatorio"
+    },
+    {
+      "question": "¿Qué ocurre si el analista de Finanzas rechaza la compra en el portal ERP?",
+      "assumption": "Se asumió que la revisión en el ERP solo resulta en aprobación, sin modelar un rechazo manual en esa etapa.",
+      "impact": "high",
+      "elementIds": [
+        "Task_AprobarERP"
+      ],
+      "sourceExcerpt": "un analista de Finanzas revisa y aprueba la compra en el portal ERP"
+    },
+    {
+      "question": "¿Qué criterios exactos según el tipo de compra activan la inspección física o el registro de factura?",
+      "assumption": "Se etiquetaron las ramas de la compuerta inclusiva como condiciones genéricas basadas en el tipo de compra.",
+      "impact": "medium",
+      "elementIds": [
+        "Gw_AccionesSplit"
+      ],
+      "sourceExcerpt": "pueden activarse una o más acciones según el tipo de compra"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo por políticas presupuestarias podría ser un evento final convencional",
+      "explanation": "En BPMN 2.0, un rechazo esperado por reglas de negocio no constituye una falla técnica; se recomienda usar un endEvent convencional o de mensaje. Se conservó errorEventDefinition porque fue solicitado explícitamente.",
+      "elementIds": [
+        "End_RechazoPoliticas"
+      ]
+    },
+    {
+      "title": "Escalamiento sin subproceso padre",
+      "explanation": "El evento intermedio de escalamiento (escalationEventDefinition) suele requerir un subproceso padre con un boundaryEvent de escalamiento que lo capture. Se conservó según lo solicitado.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    }
+  ]
+}

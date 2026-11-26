@@ -7,9 +7,11 @@ import {
 } from '../src/lib/bpmn/validator.ts';
 import { separateOverlappingEdges } from '../src/lib/bpmn/layout-postprocess.ts';
 import { buildFallbackLayout } from '../src/lib/bpmn/fallback-layout.ts';
-import { buildCacheKey, getCachedBpmn, setCachedBpmn } from '../src/lib/cache.ts';
-import { checkRateLimit } from '../src/lib/rate-limit.ts';
-import { estimateCostUsd } from '../src/lib/telemetry.ts';
+import { buildCacheKey, CACHE_VERSION, getCachedBpmn, setCachedBpmn } from '../src/lib/cache.ts';
+import { ResilientLlmAdapter } from '../src/lib/llm/adapter.ts';
+import { type LlmProvider, LlmServiceError } from '../src/lib/llm/types.ts';
+import { checkRateLimit, extractClientIp, MAX_STORE_SIZE } from '../src/lib/rate-limit.ts';
+import { estimateCostUsd, getLiveTelemetryEvents, logGenerationTelemetry } from '../src/lib/telemetry.ts';
 
 const VALID_LINEAR_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_1" targetNamespace="http://bpmn.io/schema/bpmn">
@@ -686,4 +688,452 @@ test('validateAndLayoutBpmn routes downward gateway flow around sibling node in 
       );
     }
   }
+});
+
+test('logGenerationTelemetry records live buffer events with operation and computes cost', () => {
+  const reqId = `test-telemetry-${Date.now()}`;
+  logGenerationTelemetry(
+    {
+      requestId: reqId,
+      operation: 'analyze',
+      outcome: 'success',
+      httpStatus: 200,
+      errorCode: null,
+      mode: 'fast',
+      provider: 'vertex-ai',
+      model: 'gemini-4-hydrogen',
+      location: 'global',
+      latencyMs: 3200,
+      attempts: 1,
+      repaired: false,
+      inputChars: 240,
+      usage: { promptTokens: 1000, outputTokens: 200, thinkingTokens: 100 },
+    },
+    { skipPersist: true }
+  );
+  const events = getLiveTelemetryEvents(50);
+  const match = events.find((e) => e.requestId === reqId);
+  assert.ok(match, 'Logged telemetry event must be retrievable from live buffer');
+  assert.equal(match.operation, 'analyze');
+  assert.equal(match.estimatedCostUsd, 0.00375);
+});
+
+test('validateAndLayoutBpmn aligns merge column past boundary handlers, keeps rejection tracks flat, and avoids edge/label overlap on multi-boundary hosts', async () => {
+  const fraudBranchXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_FraudLayout" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collab_Fraud">
+    <bpmn:participant id="Part_Aseg" name="Aseguradora" processRef="Proc_Fraud" />
+    <bpmn:participant id="Part_Cliente" name="Asegurado" />
+    <bpmn:messageFlow id="MF_Rechazo" name="Aviso rechazo" sourceRef="Task_Rechazo" targetRef="Part_Cliente" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_Fraud" isExecutable="false">
+    <bpmn:laneSet id="LS_Fraud">
+      <bpmn:lane id="Lane_Liq" name="Liquidación y Fraude">
+        <bpmn:flowNodeRef>S_Liq</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Eval</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Cob</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Antifraude</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Bnd_Falla</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Bnd_24h</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Rechazo</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_Rechazado</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Rec</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_Rec</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Manual</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Merge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Fraude</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_Fraude</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Franquicia</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="S_Liq" name="Inicio"><bpmn:outgoing>FL_0</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:businessRuleTask id="Task_Eval" name="Evaluar cobertura por matriz"><bpmn:incoming>FL_0</bpmn:incoming><bpmn:outgoing>FL_1</bpmn:outgoing></bpmn:businessRuleTask>
+    <bpmn:exclusiveGateway id="Gw_Cob" name="¿Tiene cobertura vigente?"><bpmn:incoming>FL_1</bpmn:incoming><bpmn:outgoing>FL_Si</bpmn:outgoing><bpmn:outgoing>FL_No</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Antifraude" name="Consultar servicio antifraude"><bpmn:incoming>FL_Si</bpmn:incoming><bpmn:outgoing>FL_Ok</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:boundaryEvent id="Bnd_Falla" name="Falla técnica API" attachedToRef="Task_Antifraude"><bpmn:outgoing>FL_Falla</bpmn:outgoing><bpmn:errorEventDefinition id="ED_Falla" /></bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Bnd_24h" name="24 horas sin resolución" cancelActivity="false" attachedToRef="Task_Antifraude"><bpmn:outgoing>FL_24h</bpmn:outgoing><bpmn:timerEventDefinition id="TD_24h" /></bpmn:boundaryEvent>
+    <bpmn:sendTask id="Task_Rechazo" name="Enviar aviso de rechazo"><bpmn:incoming>FL_No</bpmn:incoming><bpmn:outgoing>FL_Rechazo</bpmn:outgoing></bpmn:sendTask>
+    <bpmn:endEvent id="End_Rechazado" name="Siniestro rechazado"><bpmn:incoming>FL_Rechazo</bpmn:incoming></bpmn:endEvent>
+    <bpmn:serviceTask id="Task_Rec" name="Enviar recordatorio interno"><bpmn:incoming>FL_24h</bpmn:incoming><bpmn:outgoing>FL_Rec</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:endEvent id="End_Rec" name="Recordatorio enviado"><bpmn:incoming>FL_Rec</bpmn:incoming></bpmn:endEvent>
+    <bpmn:userTask id="Task_Manual" name="Realizar revisión manual"><bpmn:incoming>FL_Falla</bpmn:incoming><bpmn:outgoing>FL_Man</bpmn:outgoing></bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gw_Merge"><bpmn:incoming>FL_Ok</bpmn:incoming><bpmn:incoming>FL_Man</bpmn:incoming><bpmn:outgoing>FL_ToFraud</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gw_Fraude" name="¿Se confirma fraude?"><bpmn:incoming>FL_ToFraud</bpmn:incoming><bpmn:outgoing>FL_FrSi</bpmn:outgoing><bpmn:outgoing>FL_FrNo</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_Fraude" name="Rechazado por fraude"><bpmn:incoming>FL_FrSi</bpmn:incoming><bpmn:errorEventDefinition id="ED_Fr" /></bpmn:endEvent>
+    <bpmn:scriptTask id="Task_Franquicia" name="Calcular franquicia y topes"><bpmn:incoming>FL_FrNo</bpmn:incoming></bpmn:scriptTask>
+    <bpmn:sequenceFlow id="FL_0" sourceRef="S_Liq" targetRef="Task_Eval" />
+    <bpmn:sequenceFlow id="FL_1" sourceRef="Task_Eval" targetRef="Gw_Cob" />
+    <bpmn:sequenceFlow id="FL_Si" name="Sí" sourceRef="Gw_Cob" targetRef="Task_Antifraude" />
+    <bpmn:sequenceFlow id="FL_No" name="No" sourceRef="Gw_Cob" targetRef="Task_Rechazo" />
+    <bpmn:sequenceFlow id="FL_Ok" sourceRef="Task_Antifraude" targetRef="Gw_Merge" />
+    <bpmn:sequenceFlow id="FL_Rechazo" sourceRef="Task_Rechazo" targetRef="End_Rechazado" />
+    <bpmn:sequenceFlow id="FL_Falla" sourceRef="Bnd_Falla" targetRef="Task_Manual" />
+    <bpmn:sequenceFlow id="FL_24h" sourceRef="Bnd_24h" targetRef="Task_Rec" />
+    <bpmn:sequenceFlow id="FL_Rec" sourceRef="Task_Rec" targetRef="End_Rec" />
+    <bpmn:sequenceFlow id="FL_Man" sourceRef="Task_Manual" targetRef="Gw_Merge" />
+    <bpmn:sequenceFlow id="FL_ToFraud" sourceRef="Gw_Merge" targetRef="Gw_Fraude" />
+    <bpmn:sequenceFlow id="FL_FrSi" name="Sí" sourceRef="Gw_Fraude" targetRef="End_Fraude" />
+    <bpmn:sequenceFlow id="FL_FrNo" name="No" sourceRef="Gw_Fraude" targetRef="Task_Franquicia" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+  const layouted = await validateAndLayoutBpmn(fraudBranchXml);
+
+  const getBounds = (id: string) => {
+    const m = layouted.match(
+      new RegExp(`id="${id}_di"[^>]*>[\\s\\S]*?<omgdc:Bounds x="(\\d+)" y="(\\d+)" width="(\\d+)" height="(\\d+)"`)
+    );
+    assert.ok(m, `Expected bounds for ${id}`);
+    return { x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]) };
+  };
+
+  const manualBox = getBounds('Task_Manual');
+  const mergeBox = getBounds('Gw_Merge');
+  const rechazoBox = getBounds('Task_Rechazo');
+  const endRechBox = getBounds('End_Rechazado');
+  const recBox = getBounds('Task_Rec');
+  const endRecBox = getBounds('End_Rec');
+  const hostBox = getBounds('Task_Antifraude');
+  const fallaBox = getBounds('Bnd_Falla');
+  const timerBox = getBounds('Bnd_24h');
+
+  assert.ok(
+    mergeBox.x > manualBox.x + manualBox.w,
+    `Gw_Merge (x=${mergeBox.x}) must sit strictly to the right of Task_Manual (x=${manualBox.x})`
+  );
+  assert.ok(
+    endRechBox.y >= rechazoBox.y,
+    `End_Rechazado (y=${endRechBox.y}) must stay on or below Task_Rechazo track (y=${rechazoBox.y})`
+  );
+  assert.ok(
+    endRecBox.y > mergeBox.y + mergeBox.h,
+    `End_Rec (y=${endRecBox.y}) must stay strictly below Gw_Merge (y=${mergeBox.y})`
+  );
+
+  // El evento adjunto de destino más profundo (Task_Rec / 24h) debe quedar a la izquierda del de revisión manual
+  assert.ok(recBox.y > manualBox.y, 'Task_Rec should sit below rejoining Task_Manual');
+  assert.ok(
+    timerBox.x < fallaBox.x,
+    `Bnd_24h (x=${timerBox.x}) should be left of Bnd_Falla (x=${fallaBox.x}) to avoid edge crossings`
+  );
+  assert.equal(fallaBox.y, hostBox.y + hostBox.h - 18);
+  assert.equal(timerBox.y, hostBox.y + hostBox.h - 18);
+
+  // Etiquetas explícitas separadas horizontalmente para múltiples boundary events
+  const getLabelX = (id: string): number => {
+    const m = layouted.match(
+      new RegExp(`id="${id}_di"[^>]*>[\\s\\S]*?<bpmndi:BPMNLabel>\\s*<omgdc:Bounds x="(-?\\d+)"`)
+    );
+    assert.ok(m, `Expected explicit BPMNLabel for ${id}`);
+    return Number(m[1]);
+  };
+  assert.ok(Math.abs(getLabelX('Bnd_Falla') - getLabelX('Bnd_24h')) >= 40);
+
+  // Ningún sequenceFlow de ese flujo debe atravesar el interior de Task_Rec ni End_Rechazado ni Task_Rechazo
+  const obstacleCheck = [
+    { id: 'Task_Rec', box: recBox },
+    { id: 'End_Rechazado', box: endRechBox },
+    { id: 'Task_Rechazo', box: rechazoBox },
+  ];
+  const edgeMatches = Array.from(
+    layouted.matchAll(/id="(FL_[^"]+)_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/g)
+  );
+  const endpointsByFlow: Record<string, [string, string]> = {
+    FL_Ok: ['Task_Antifraude', 'Gw_Merge'],
+    FL_Falla: ['Bnd_Falla', 'Task_Manual'],
+    FL_24h: ['Bnd_24h', 'Task_Rec'],
+    FL_Rec: ['Task_Rec', 'End_Rec'],
+    FL_Man: ['Task_Manual', 'Gw_Merge'],
+    FL_Rechazo: ['Task_Rechazo', 'End_Rechazado'],
+  };
+
+  for (const [, flowId, body] of edgeMatches) {
+    const eps = endpointsByFlow[flowId];
+    if (!eps) continue;
+    const wps = Array.from(body.matchAll(/x="(-?\d+)" y="(-?\d+)"/g)).map((m) => ({
+      x: Number(m[1]),
+      y: Number(m[2]),
+    }));
+    for (let i = 0; i < wps.length - 1; i++) {
+      const a = wps[i];
+      const b = wps[i + 1];
+      for (const { id: obsId, box } of obstacleCheck) {
+        if (obsId === eps[0] || obsId === eps[1]) continue;
+        if (a.x === b.x) {
+          const minY = Math.min(a.y, b.y);
+          const maxY = Math.max(a.y, b.y);
+          assert.ok(
+            !(minY < box.y + box.h && maxY > box.y && a.x > box.x && a.x < box.x + box.w),
+            `${flowId} vertical segment at x=${a.x} crossed inside ${obsId}`
+          );
+        } else if (a.y === b.y) {
+          const minX = Math.min(a.x, b.x);
+          const maxX = Math.max(a.x, b.x);
+          assert.ok(
+            !(minX < box.x + box.w && maxX > box.x && a.y > box.y && a.y < box.y + box.h),
+            `${flowId} horizontal segment at y=${a.y} crossed inside ${obsId}`
+          );
+        }
+      }
+    }
+  }
+});
+
+test('validateAndLayoutBpmn rejects non-NCName IDs and XML-entity injection payloads', async () => {
+  const entityBypassXml = VALID_LINEAR_XML.replace(
+    'id="Task_1"',
+    'id="Task_1&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;foo a=&quot;"'
+  );
+  await assert.rejects(() => validateAndLayoutBpmn(entityBypassXml), BpmnValidationError);
+
+  const spaceInIdXml = VALID_LINEAR_XML.replace('id="Task_1"', 'id="Task 1"');
+  await assert.rejects(() => validateAndLayoutBpmn(spaceInIdXml), BpmnValidationError);
+});
+
+test('validateAndLayoutBpmn allows benign "online=activo" attribute text while blocking DOM event handlers', async () => {
+  const benignTextXml = VALID_LINEAR_XML.replace('name="Revisar pedido"', 'name="Canal online=activo"');
+  const layouted = await validateAndLayoutBpmn(benignTextXml);
+  assert.ok(layouted.includes('Canal online=activo'));
+
+  const domHandlerXml = VALID_LINEAR_XML.replace('name="Revisar pedido"', 'name="Revisar" onclick="alert(1)"');
+  await assert.rejects(() => validateAndLayoutBpmn(domHandlerXml), BpmnValidationError);
+});
+
+test('extractClientIp prioritizes trusted proxy headers and checkRateLimit bounds store size', () => {
+  const makeHeaders = (map: Record<string, string>) => ({
+    get: (name: string) => map[name.toLowerCase()] ?? null,
+  });
+
+  assert.equal(
+    extractClientIp(
+      makeHeaders({
+        'x-vercel-forwarded-for': '203.0.113.10, 10.0.0.1',
+        'x-forwarded-for': '1.2.3.4',
+      })
+    ),
+    '203.0.113.10'
+  );
+
+  // Toma la última IP anexada por proxy en x-forwarded-for (evita spoofing al inicio)
+  assert.equal(
+    extractClientIp(makeHeaders({ 'x-forwarded-for': 'spoofed.ip, 198.51.100.42' })),
+    '198.51.100.42'
+  );
+
+  for (let i = 0; i <= MAX_STORE_SIZE + 25; i++) {
+    const res = checkRateLimit(`bounded-test-ip-${i}`);
+    assert.equal(res.allowed, true);
+  }
+  assert.equal(checkRateLimit('bounded-test-ip-final').allowed, true);
+});
+
+test('buildCacheKey isolates different models and includes cache version', () => {
+  const k1 = buildCacheKey('Proceso X', 'fast', 'gemini-4-hydrogen');
+  const k2 = buildCacheKey('Proceso X', 'fast', 'gemini-2.5-flash');
+  assert.notEqual(k1, k2);
+  assert.ok(CACHE_VERSION.length > 0);
+});
+
+test('ResilientLlmAdapter fails over on retryable error, stops on non-retryable error, and respects shared deadline', async () => {
+  const primaryFailing: LlmProvider = {
+    name: 'vertex-ai',
+    model: 'primary',
+    async generate() {
+      throw new LlmServiceError('Rate limit', 429, 'RATE_LIMIT', true);
+    },
+  };
+  const fallbackSuccess: LlmProvider = {
+    name: 'google-ai-studio',
+    model: 'fallback',
+    async generate() {
+      return {
+        bpmnXml: VALID_LINEAR_XML,
+        assumptions: [],
+        recommendations: [],
+      };
+    },
+  };
+
+  const failoverAdapter = new ResilientLlmAdapter([primaryFailing, fallbackSuccess], 60_000, 0);
+  const res = await failoverAdapter.generate({ processDescription: 'Demo', mode: 'fast' });
+  assert.equal(res.meta.provider, 'google-ai-studio');
+  assert.equal(res.meta.fallbackUsed, true);
+
+  let fallbackCalled = false;
+  const nonRetryablePrimary: LlmProvider = {
+    name: 'vertex-ai',
+    model: 'primary',
+    async generate() {
+      throw new LlmServiceError('Safety block', 400, 'SAFETY_BLOCK', false);
+    },
+  };
+  const guardedFallback: LlmProvider = {
+    name: 'google-ai-studio',
+    model: 'fallback',
+    async generate() {
+      fallbackCalled = true;
+      return { bpmnXml: VALID_LINEAR_XML, assumptions: [], recommendations: [] };
+    },
+  };
+  const stopAdapter = new ResilientLlmAdapter([nonRetryablePrimary, guardedFallback], 60_000, 0);
+  await assert.rejects(
+    () => stopAdapter.generate({ processDescription: 'Demo', mode: 'fast' }),
+    (err: unknown) => err instanceof LlmServiceError && err.code === 'SAFETY_BLOCK'
+  );
+  assert.equal(fallbackCalled, false);
+
+  // Si el presupuesto restante tras el primario es < 10s, no intenta el fallback
+  let tightFallbackCalled = false;
+  const tightAdapter = new ResilientLlmAdapter(
+    [
+      primaryFailing,
+      {
+        ...fallbackSuccess,
+        async generate() {
+          tightFallbackCalled = true;
+          return { bpmnXml: VALID_LINEAR_XML, assumptions: [], recommendations: [] };
+        },
+      },
+    ],
+    5_000,
+    0
+  );
+  await assert.rejects(() => tightAdapter.generate({ processDescription: 'Demo', mode: 'fast' }));
+  assert.equal(tightFallbackCalled, false);
+});
+
+test('validateAndLayoutBpmn uses distinct entry ports on converging gateways and routes long-span skip edges along perimeter without crossing intermediate nodes', async () => {
+  const convergingAndSkipXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_ConvSkip" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collab_CS">
+    <bpmn:participant id="Part_CS" name="Empresa" processRef="Proc_CS" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_CS" isExecutable="false">
+    <bpmn:laneSet id="LS_CS">
+      <bpmn:lane id="Lane_CS" name="Operaciones">
+        <bpmn:flowNodeRef>S_CS</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Class</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Step1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_IncSplit</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Opt1</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Opt2</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Opt3</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_IncJoin</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_FinalMerge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>E_CS</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="S_CS" name="Inicio"><bpmn:outgoing>F_S</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:exclusiveGateway id="Gw_Class" name="¿Tipo?"><bpmn:incoming>F_S</bpmn:incoming><bpmn:outgoing>F_FastSkip</bpmn:outgoing><bpmn:outgoing>F_Normal</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="T_Step1" name="Inspeccionar"><bpmn:incoming>F_Normal</bpmn:incoming><bpmn:outgoing>F_ToSplit</bpmn:outgoing></bpmn:task>
+    <bpmn:inclusiveGateway id="Gw_IncSplit" name="Opciones"><bpmn:incoming>F_ToSplit</bpmn:incoming><bpmn:outgoing>F_O1</bpmn:outgoing><bpmn:outgoing>F_O2</bpmn:outgoing><bpmn:outgoing>F_O3</bpmn:outgoing></bpmn:inclusiveGateway>
+    <bpmn:task id="T_Opt1" name="Opción A"><bpmn:incoming>F_O1</bpmn:incoming><bpmn:outgoing>F_J1</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="T_Opt2" name="Opción B"><bpmn:incoming>F_O2</bpmn:incoming><bpmn:outgoing>F_J2</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="T_Opt3" name="Opción C"><bpmn:incoming>F_O3</bpmn:incoming><bpmn:outgoing>F_J3</bpmn:outgoing></bpmn:task>
+    <bpmn:inclusiveGateway id="Gw_IncJoin"><bpmn:incoming>F_J1</bpmn:incoming><bpmn:incoming>F_J2</bpmn:incoming><bpmn:incoming>F_J3</bpmn:incoming><bpmn:outgoing>F_ToFinal</bpmn:outgoing></bpmn:inclusiveGateway>
+    <bpmn:exclusiveGateway id="Gw_FinalMerge"><bpmn:incoming>F_ToFinal</bpmn:incoming><bpmn:incoming>F_FastSkip</bpmn:incoming><bpmn:outgoing>F_Done</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="E_CS" name="Fin"><bpmn:incoming>F_Done</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_S" sourceRef="S_CS" targetRef="Gw_Class" />
+    <bpmn:sequenceFlow id="F_FastSkip" name="Salto directo" sourceRef="Gw_Class" targetRef="Gw_FinalMerge" />
+    <bpmn:sequenceFlow id="F_Normal" name="Regular" sourceRef="Gw_Class" targetRef="T_Step1" />
+    <bpmn:sequenceFlow id="F_ToSplit" sourceRef="T_Step1" targetRef="Gw_IncSplit" />
+    <bpmn:sequenceFlow id="F_O1" sourceRef="Gw_IncSplit" targetRef="T_Opt1" />
+    <bpmn:sequenceFlow id="F_O2" sourceRef="Gw_IncSplit" targetRef="T_Opt2" />
+    <bpmn:sequenceFlow id="F_O3" sourceRef="Gw_IncSplit" targetRef="T_Opt3" />
+    <bpmn:sequenceFlow id="F_J1" sourceRef="T_Opt1" targetRef="Gw_IncJoin" />
+    <bpmn:sequenceFlow id="F_J2" sourceRef="T_Opt2" targetRef="Gw_IncJoin" />
+    <bpmn:sequenceFlow id="F_J3" sourceRef="T_Opt3" targetRef="Gw_IncJoin" />
+    <bpmn:sequenceFlow id="F_ToFinal" sourceRef="Gw_IncJoin" targetRef="Gw_FinalMerge" />
+    <bpmn:sequenceFlow id="F_Done" sourceRef="Gw_FinalMerge" targetRef="E_CS" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+  const layouted = await validateAndLayoutBpmn(convergingAndSkipXml);
+
+  const lastWp = (edgeId: string): string => {
+    const m = layouted.match(new RegExp(`id="${edgeId}_di"[^>]*>([\\s\\S]*?)</bpmndi:BPMNEdge>`));
+    assert.ok(m, `Expected edge ${edgeId}`);
+    const pts = Array.from(m[1].matchAll(/x="(-?\d+)" y="(-?\d+)"/g));
+    const last = pts[pts.length - 1];
+    assert.ok(last);
+    return `${last[1]},${last[2]}`;
+  };
+
+  // Las 3 ramas entrantes a Gw_IncJoin deben llegar por vértices distintos (arriba, izquierda, abajo)
+  const joinEnds = [lastWp('F_J1'), lastWp('F_J2'), lastWp('F_J3')];
+  assert.equal(new Set(joinEnds).size, 3, `Expected 3 distinct entry ports on Gw_IncJoin: ${joinEnds.join(' | ')}`);
+
+  // El salto largo F_FastSkip no debe atravesar T_Opt2 ni T_Opt3 y entra distinto a F_ToFinal
+  assert.notEqual(lastWp('F_FastSkip'), lastWp('F_ToFinal'));
+  const opt3Match = layouted.match(
+    /id="T_Opt3_di"[^>]*>[\s\S]*?<omgdc:Bounds x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/
+  );
+  const skipEdgeMatch = layouted.match(/id="F_FastSkip_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/);
+  assert.ok(opt3Match && skipEdgeMatch);
+  const opt3Bottom = Number(opt3Match[2]) + Number(opt3Match[4]);
+  const skipYs = Array.from(skipEdgeMatch[1].matchAll(/y="(-?\d+)"/g)).map((m) => Number(m[1]));
+  assert.ok(
+    skipYs.some((y) => y > opt3Bottom),
+    `Expected F_FastSkip perimeter highway below T_Opt3 bottom (${opt3Bottom}), got y=${skipYs.join(',')}`
+  );
+});
+
+test('validateAndLayoutBpmn positions upper/lower external black-box pools on opposite sides, normalizes empty leading rows, and routes top-row loops above row 0', async () => {
+  const multiPoolTopLoopXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_MP" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collab_MP">
+    <bpmn:participant id="Part_Emp" name="Empresa" processRef="Proc_MP" />
+    <bpmn:participant id="Part_Cliente" name="Cliente" />
+    <bpmn:participant id="Part_Proveedor" name="Proveedor" />
+    <bpmn:messageFlow id="MF_Start" name="Pedido" sourceRef="Part_Cliente" targetRef="Start_MP" />
+    <bpmn:messageFlow id="MF_Prov" name="Solicitud" sourceRef="T_Ask" targetRef="Part_Proveedor" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_MP" isExecutable="false">
+    <bpmn:laneSet id="LS_MP">
+      <bpmn:lane id="Lane_Top" name="Atención">
+        <bpmn:flowNodeRef>Start_MP</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Intake</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Bot" name="Compras">
+        <bpmn:flowNodeRef>Gw_Loop</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Ask</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Ok</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_MP</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_MP" name="Pedido recibido"><bpmn:outgoing>FM_1</bpmn:outgoing><bpmn:messageEventDefinition id="MD_1" /></bpmn:startEvent>
+    <bpmn:task id="T_Intake" name="Registrar"><bpmn:incoming>FM_1</bpmn:incoming><bpmn:outgoing>FM_2</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="Gw_Loop"><bpmn:incoming>FM_2</bpmn:incoming><bpmn:incoming>FM_Retry</bpmn:incoming><bpmn:outgoing>FM_3</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:sendTask id="T_Ask" name="Consultar"><bpmn:incoming>FM_3</bpmn:incoming><bpmn:outgoing>FM_4</bpmn:outgoing></bpmn:sendTask>
+    <bpmn:exclusiveGateway id="Gw_Ok" name="¿Respondió?"><bpmn:incoming>FM_4</bpmn:incoming><bpmn:outgoing>FM_Yes</bpmn:outgoing><bpmn:outgoing>FM_Retry</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_MP" name="Fin"><bpmn:incoming>FM_Yes</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="FM_1" sourceRef="Start_MP" targetRef="T_Intake" />
+    <bpmn:sequenceFlow id="FM_2" sourceRef="T_Intake" targetRef="Gw_Loop" />
+    <bpmn:sequenceFlow id="FM_3" sourceRef="Gw_Loop" targetRef="T_Ask" />
+    <bpmn:sequenceFlow id="FM_4" sourceRef="T_Ask" targetRef="Gw_Ok" />
+    <bpmn:sequenceFlow id="FM_Yes" name="Sí" sourceRef="Gw_Ok" targetRef="End_MP" />
+    <bpmn:sequenceFlow id="FM_Retry" name="Reintentar" sourceRef="Gw_Ok" targetRef="Gw_Loop" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+  const layouted = await validateAndLayoutBpmn(multiPoolTopLoopXml);
+  const getY = (id: string) => {
+    const m = layouted.match(new RegExp(`id="${id}_di"[^>]*>[\\s\\S]*?<omgdc:Bounds[^>]*y="(\\d+)"`));
+    assert.ok(m, `Expected bounds for ${id}`);
+    return Number(m[1]);
+  };
+
+  // Part_Cliente debe ir arriba de Part_Emp y Part_Proveedor abajo
+  assert.ok(getY('Part_Cliente') < getY('Part_Emp'), 'Client pool should sit above Enterprise pool');
+  assert.ok(getY('Part_Proveedor') > getY('Part_Emp'), 'Supplier pool should sit below Enterprise pool');
+
+  // El retorno FM_Retry en fila 0 debe rutearse por encima de Gw_Loop / T_Ask (evitando cruzar MF_Prov hacia abajo)
+  const retryMatch = layouted.match(/id="FM_Retry_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/);
+  assert.ok(retryMatch);
+  const retryYs = Array.from(retryMatch[1].matchAll(/y="(-?\d+)"/g)).map((m) => Number(m[1]));
+  const minRetryY = Math.min(...retryYs);
+  assert.ok(
+    minRetryY < getY('T_Ask'),
+    `Expected top-row retry loop (minY=${minRetryY}) above T_Ask (y=${getY('T_Ask')})`
+  );
 });

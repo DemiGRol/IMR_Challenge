@@ -1,0 +1,24 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si el empleado no tiene saldo suficiente de días al momento de solicitar o aprobar?",
+      "assumption": "Se asumió que el empleado posee saldo suficiente y no se incluyó una validación previa ni un flujo de rechazo por falta de días.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Registrar",
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿El aviso de rechazo lo envía automáticamente el sistema o lo redacta manualmente el responsable?",
+      "assumption": "Se modeló el envío del aviso de rechazo como una tarea de servicio automática dentro del carril del responsable.",
+      "impact": "low",
+      "elementIds": [
+        "Task_AvisoRechazo"
+      ],
+      "sourceExcerpt": "el empleado recibe un aviso con el motivo"
+    }
+  ],
+  "recommendations": []
+}

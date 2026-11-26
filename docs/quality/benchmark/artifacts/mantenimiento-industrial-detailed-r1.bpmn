@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"><bpmn:collaboration id="Collaboration_1"><bpmn:participant id="Participant_Planta" name="Planta" processRef="Process_1" /><bpmn:participant id="Participant_Proveedor" name="Proveedor externo" /><bpmn:messageFlow id="MsgFlow_1" name="Solicitud de cotización y entrega urgente" sourceRef="Task_SolicitarCotizacion" targetRef="Participant_Proveedor" /><bpmn:messageFlow id="MsgFlow_2" name="Confirmación de entrega" sourceRef="Participant_Proveedor" targetRef="Catch_Confirmacion" /></bpmn:collaboration><bpmn:process id="Process_1" isExecutable="false"><bpmn:laneSet id="LaneSet_1"><bpmn:lane id="Lane_Mantenimiento" name="Mantenimiento"><bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_RegistrarOT</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_ParallelSplit</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Inspeccionar</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_ParallelJoin</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Reparar</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_HabilitarYCerrar</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Completado</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Compras" name="Compras"><bpmn:flowNodeRef>Task_VerificarStock</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_Stock</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_SolicitarCotizacion</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_EsperaProveedor</bpmn:flowNodeRef><bpmn:flowNodeRef>Catch_Confirmacion</bpmn:flowNodeRef><bpmn:flowNodeRef>Catch_Timeout72h</bpmn:flowNodeRef><bpmn:flowNodeRef>Throw_EscalarDemora</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_MergeStock</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Logistica" name="Logística"><bpmn:flowNodeRef>Task_RetirarRepuestos</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Gerencia" name="Gerencia de Planta"><bpmn:flowNodeRef>Task_Reprogramar</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Reprogramada</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Calidad" name="Calidad"><bpmn:flowNodeRef>Task_PruebaOperativa</bpmn:flowNodeRef></bpmn:lane></bpmn:laneSet><bpmn:startEvent id="StartEvent_1" name="Falla crítica reportada"><bpmn:outgoing>Flow_1</bpmn:outgoing></bpmn:startEvent><bpmn:task id="Task_RegistrarOT" name="Registrar orden de trabajo"><bpmn:incoming>Flow_1</bpmn:incoming><bpmn:outgoing>Flow_2</bpmn:outgoing></bpmn:task><bpmn:parallelGateway id="Gw_ParallelSplit"><bpmn:incoming>Flow_2</bpmn:incoming><bpmn:outgoing>Flow_ParA</bpmn:outgoing><bpmn:outgoing>Flow_ParB</bpmn:outgoing></bpmn:parallelGateway><bpmn:manualTask id="Task_Inspeccionar" name="Realizar inspección en sitio"><bpmn:incoming>Flow_ParA</bpmn:incoming><bpmn:outgoing>Flow_11</bpmn:outgoing></bpmn:manualTask><bpmn:task id="Task_VerificarStock" name="Verificar disponibilidad de repuestos"><bpmn:incoming>Flow_ParB</bpmn:incoming><bpmn:outgoing>Flow_3</bpmn:outgoing></bpmn:task><bpmn:exclusiveGateway id="Gw_Stock" name="¿Hay stock interno?"><bpmn:incoming>Flow_3</bpmn:incoming><bpmn:outgoing>Flow_StockSi</bpmn:outgoing><bpmn:outgoing>Flow_StockNo</bpmn:outgoing></bpmn:exclusiveGateway><bpmn:manualTask id="Task_RetirarRepuestos" name="Retirar repuestos del depósito"><bpmn:incoming>Flow_StockSi</bpmn:incoming><bpmn:outgoing>Flow_8</bpmn:outgoing></bpmn:manualTask><bpmn:sendTask id="Task_SolicitarCotizacion" name="Solicitar cotización y entrega urgente"><bpmn:incoming>Flow_StockNo</bpmn:incoming><bpmn:outgoing>Flow_4</bpmn:outgoing></bpmn:sendTask><bpmn:eventBasedGateway id="Gw_EsperaProveedor" name="Esperar confirmación del proveedor"><bpmn:incoming>Flow_4</bpmn:incoming><bpmn:outgoing>Flow_WaitMsg</bpmn:outgoing><bpmn:outgoing>Flow_WaitTimer</bpmn:outgoing></bpmn:eventBasedGateway><bpmn:intermediateCatchEvent id="Catch_Confirmacion" name="Confirmación recibida"><bpmn:incoming>Flow_WaitMsg</bpmn:incoming><bpmn:outgoing>Flow_9</bpmn:outgoing><bpmn:messageEventDefinition id="MsgDef_Catch" /></bpmn:intermediateCatchEvent><bpmn:intermediateCatchEvent id="Catch_Timeout72h" name="72 horas vencidas"><bpmn:incoming>Flow_WaitTimer</bpmn:incoming><bpmn:outgoing>Flow_5</bpmn:outgoing><bpmn:timerEventDefinition id="TimerDef_72h" /></bpmn:intermediateCatchEvent><bpmn:intermediateThrowEvent id="Throw_EscalarDemora" name="Escalar demora a Gerencia"><bpmn:incoming>Flow_5</bpmn:incoming><bpmn:outgoing>Flow_6</bpmn:outgoing><bpmn:escalationEventDefinition id="EscDef_1" /></bpmn:intermediateThrowEvent><bpmn:task id="Task_Reprogramar" name="Reprogramar producción"><bpmn:incoming>Flow_6</bpmn:incoming><bpmn:outgoing>Flow_7</bpmn:outgoing></bpmn:task><bpmn:endEvent id="End_Reprogramada" name="Producción reprogramada"><bpmn:incoming>Flow_7</bpmn:incoming></bpmn:endEvent><bpmn:exclusiveGateway id="Gw_MergeStock"><bpmn:incoming>Flow_8</bpmn:incoming><bpmn:incoming>Flow_9</bpmn:incoming><bpmn:outgoing>Flow_10</bpmn:outgoing></bpmn:exclusiveGateway><bpmn:parallelGateway id="Gw_ParallelJoin"><bpmn:incoming>Flow_10</bpmn:incoming><bpmn:incoming>Flow_11</bpmn:incoming><bpmn:outgoing>Flow_12</bpmn:outgoing></bpmn:parallelGateway><bpmn:manualTask id="Task_Reparar" name="Ejecutar reparación"><bpmn:incoming>Flow_12</bpmn:incoming><bpmn:outgoing>Flow_13</bpmn:outgoing></bpmn:manualTask><bpmn:task id="Task_PruebaOperativa" name="Realizar prueba operativa"><bpmn:incoming>Flow_13</bpmn:incoming><bpmn:outgoing>Flow_14</bpmn:outgoing></bpmn:task><bpmn:task id="Task_HabilitarYCerrar" name="Habilitar máquina y cerrar orden"><bpmn:incoming>Flow_14</bpmn:incoming><bpmn:outgoing>Flow_15</bpmn:outgoing></bpmn:task><bpmn:endEvent id="End_Completado" name="Mantenimiento completado"><bpmn:incoming>Flow_15</bpmn:incoming></bpmn:endEvent><bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_RegistrarOT" /><bpmn:sequenceFlow id="Flow_2" sourceRef="Task_RegistrarOT" targetRef="Gw_ParallelSplit" /><bpmn:sequenceFlow id="Flow_ParA" sourceRef="Gw_ParallelSplit" targetRef="Task_Inspeccionar" /><bpmn:sequenceFlow id="Flow_ParB" sourceRef="Gw_ParallelSplit" targetRef="Task_VerificarStock" /><bpmn:sequenceFlow id="Flow_3" sourceRef="Task_VerificarStock" targetRef="Gw_Stock" /><bpmn:sequenceFlow id="Flow_StockSi" name="Sí" sourceRef="Gw_Stock" targetRef="Task_RetirarRepuestos" /><bpmn:sequenceFlow id="Flow_StockNo" name="No" sourceRef="Gw_Stock" targetRef="Task_SolicitarCotizacion" /><bpmn:sequenceFlow id="Flow_4" sourceRef="Task_SolicitarCotizacion" targetRef="Gw_EsperaProveedor" /><bpmn:sequenceFlow id="Flow_WaitMsg" sourceRef="Gw_EsperaProveedor" targetRef="Catch_Confirmacion" /><bpmn:sequenceFlow id="Flow_WaitTimer" sourceRef="Gw_EsperaProveedor" targetRef="Catch_Timeout72h" /><bpmn:sequenceFlow id="Flow_5" sourceRef="Catch_Timeout72h" targetRef="Throw_EscalarDemora" /><bpmn:sequenceFlow id="Flow_6" sourceRef="Throw_EscalarDemora" targetRef="Task_Reprogramar" /><bpmn:sequenceFlow id="Flow_7" sourceRef="Task_Reprogramar" targetRef="End_Reprogramada" /><bpmn:sequenceFlow id="Flow_8" sourceRef="Task_RetirarRepuestos" targetRef="Gw_MergeStock" /><bpmn:sequenceFlow id="Flow_9" sourceRef="Catch_Confirmacion" targetRef="Gw_MergeStock" /><bpmn:sequenceFlow id="Flow_10" sourceRef="Gw_MergeStock" targetRef="Gw_ParallelJoin" /><bpmn:sequenceFlow id="Flow_11" sourceRef="Task_Inspeccionar" targetRef="Gw_ParallelJoin" /><bpmn:sequenceFlow id="Flow_12" sourceRef="Gw_ParallelJoin" targetRef="Task_Reparar" /><bpmn:sequenceFlow id="Flow_13" sourceRef="Task_Reparar" targetRef="Task_PruebaOperativa" /><bpmn:sequenceFlow id="Flow_14" sourceRef="Task_PruebaOperativa" targetRef="Task_HabilitarYCerrar" /><bpmn:sequenceFlow id="Flow_15" sourceRef="Task_HabilitarYCerrar" targetRef="End_Completado" /></bpmn:process>  <bpmndi:BPMNDiagram id="BPMNDiagram_Collab">
+    <bpmndi:BPMNPlane id="BPMNPlane_Collab" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Planta_di" bpmnElement="Participant_Planta" isHorizontal="true">
+        <omgdc:Bounds x="120" y="80" width="1971" height="855" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Mantenimiento_di" bpmnElement="Lane_Mantenimiento" isHorizontal="true">
+        <omgdc:Bounds x="150" y="80" width="1941" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <omgdc:Bounds x="260" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RegistrarOT_di" bpmnElement="Task_RegistrarOT">
+        <omgdc:Bounds x="393" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_ParallelSplit_di" bpmnElement="Gw_ParallelSplit">
+        <omgdc:Bounds x="583" y="129" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Inspeccionar_di" bpmnElement="Task_Inspeccionar">
+        <omgdc:Bounds x="723" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_ParallelJoin_di" bpmnElement="Gw_ParallelJoin">
+        <omgdc:Bounds x="913" y="129" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Reparar_di" bpmnElement="Task_Reparar">
+        <omgdc:Bounds x="1053" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HabilitarYCerrar_di" bpmnElement="Task_HabilitarYCerrar">
+        <omgdc:Bounds x="1383" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Completado_di" bpmnElement="End_Completado">
+        <omgdc:Bounds x="1580" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Compras_di" bpmnElement="Lane_Compras" isHorizontal="true">
+        <omgdc:Bounds x="150" y="228" width="1941" height="263" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_VerificarStock_di" bpmnElement="Task_VerificarStock">
+        <omgdc:Bounds x="723" y="262" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Stock_di" bpmnElement="Gw_Stock" isMarkerVisible="true">
+        <omgdc:Bounds x="913" y="277" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SolicitarCotizacion_di" bpmnElement="Task_SolicitarCotizacion">
+        <omgdc:Bounds x="1053" y="262" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_MergeStock_di" bpmnElement="Gw_MergeStock" isMarkerVisible="true">
+        <omgdc:Bounds x="1243" y="277" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_EsperaProveedor_di" bpmnElement="Gw_EsperaProveedor">
+        <omgdc:Bounds x="1243" y="392" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Timeout72h_di" bpmnElement="Catch_Timeout72h">
+        <omgdc:Bounds x="1415" y="284" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Confirmacion_di" bpmnElement="Catch_Confirmacion">
+        <omgdc:Bounds x="1415" y="399" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Throw_EscalarDemora_di" bpmnElement="Throw_EscalarDemora">
+        <omgdc:Bounds x="1580" y="284" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Logistica_di" bpmnElement="Lane_Logistica" isHorizontal="true">
+        <omgdc:Bounds x="150" y="491" width="1941" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RetirarRepuestos_di" bpmnElement="Task_RetirarRepuestos">
+        <omgdc:Bounds x="1053" y="525" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Gerencia_di" bpmnElement="Lane_Gerencia" isHorizontal="true">
+        <omgdc:Bounds x="150" y="639" width="1941" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Reprogramar_di" bpmnElement="Task_Reprogramar">
+        <omgdc:Bounds x="1713" y="673" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Reprogramada_di" bpmnElement="End_Reprogramada">
+        <omgdc:Bounds x="1910" y="695" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Calidad_di" bpmnElement="Lane_Calidad" isHorizontal="true">
+        <omgdc:Bounds x="150" y="787" width="1941" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PruebaOperativa_di" bpmnElement="Task_PruebaOperativa">
+        <omgdc:Bounds x="1218" y="821" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_Proveedor_di" bpmnElement="Participant_Proveedor" isHorizontal="true">
+        <omgdc:Bounds x="120" y="1011" width="1971" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <omgdi:waypoint x="296" y="154" />
+        <omgdi:waypoint x="393" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <omgdi:waypoint x="493" y="154" />
+        <omgdi:waypoint x="583" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ParA_di" bpmnElement="Flow_ParA">
+        <omgdi:waypoint x="633" y="154" />
+        <omgdi:waypoint x="723" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ParB_di" bpmnElement="Flow_ParB">
+        <omgdi:waypoint x="608" y="179" />
+        <omgdi:waypoint x="608" y="302" />
+        <omgdi:waypoint x="723" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <omgdi:waypoint x="823" y="302" />
+        <omgdi:waypoint x="913" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_StockSi_di" bpmnElement="Flow_StockSi">
+        <omgdi:waypoint x="938" y="327" />
+        <omgdi:waypoint x="938" y="565" />
+        <omgdi:waypoint x="1053" y="565" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_StockNo_di" bpmnElement="Flow_StockNo">
+        <omgdi:waypoint x="963" y="302" />
+        <omgdi:waypoint x="1053" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <omgdi:waypoint x="1153" y="302" />
+        <omgdi:waypoint x="1185" y="302" />
+        <omgdi:waypoint x="1185" y="417" />
+        <omgdi:waypoint x="1243" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_WaitMsg_di" bpmnElement="Flow_WaitMsg">
+        <omgdi:waypoint x="1293" y="417" />
+        <omgdi:waypoint x="1415" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_WaitTimer_di" bpmnElement="Flow_WaitTimer">
+        <omgdi:waypoint x="1268" y="392" />
+        <omgdi:waypoint x="1268" y="378" />
+        <omgdi:waypoint x="1307" y="378" />
+        <omgdi:waypoint x="1307" y="302" />
+        <omgdi:waypoint x="1415" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <omgdi:waypoint x="1451" y="302" />
+        <omgdi:waypoint x="1580" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <omgdi:waypoint x="1616" y="302" />
+        <omgdi:waypoint x="1650" y="302" />
+        <omgdi:waypoint x="1650" y="713" />
+        <omgdi:waypoint x="1713" y="713" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <omgdi:waypoint x="1813" y="713" />
+        <omgdi:waypoint x="1910" y="713" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_8_di" bpmnElement="Flow_8">
+        <omgdi:waypoint x="1153" y="565" />
+        <omgdi:waypoint x="1201" y="565" />
+        <omgdi:waypoint x="1201" y="302" />
+        <omgdi:waypoint x="1243" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_9_di" bpmnElement="Flow_9">
+        <omgdi:waypoint x="1433" y="435" />
+        <omgdi:waypoint x="1433" y="457" />
+        <omgdi:waypoint x="1268" y="457" />
+        <omgdi:waypoint x="1268" y="327" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10">
+        <omgdi:waypoint x="1268" y="327" />
+        <omgdi:waypoint x="1268" y="367" />
+        <omgdi:waypoint x="938" y="367" />
+        <omgdi:waypoint x="938" y="179" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11">
+        <omgdi:waypoint x="823" y="154" />
+        <omgdi:waypoint x="913" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12">
+        <omgdi:waypoint x="963" y="154" />
+        <omgdi:waypoint x="1053" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13">
+        <omgdi:waypoint x="1153" y="154" />
+        <omgdi:waypoint x="1177" y="154" />
+        <omgdi:waypoint x="1177" y="861" />
+        <omgdi:waypoint x="1218" y="861" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14">
+        <omgdi:waypoint x="1318" y="861" />
+        <omgdi:waypoint x="1342" y="861" />
+        <omgdi:waypoint x="1342" y="154" />
+        <omgdi:waypoint x="1383" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_15_di" bpmnElement="Flow_15">
+        <omgdi:waypoint x="1483" y="154" />
+        <omgdi:waypoint x="1580" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MsgFlow_1_di" bpmnElement="MsgFlow_1">
+        <omgdi:waypoint x="1153" y="302" />
+        <omgdi:waypoint x="1177" y="302" />
+        <omgdi:waypoint x="1177" y="1011" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MsgFlow_2_di" bpmnElement="MsgFlow_2">
+        <omgdi:waypoint x="1433" y="1011" />
+        <omgdi:waypoint x="1433" y="435" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

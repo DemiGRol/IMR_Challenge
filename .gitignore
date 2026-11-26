@@ -8,3 +8,4 @@ dist/
 __pycache__/
 .agents/runs/
 private/
+docs/quality/telemetry/live-events.jsonl
