@@ -1,0 +1,16 @@
+{
+  "sessionDate": "2026-11-25",
+  "windowLocal": "2026-11-25 13:27–19:49 ART (UTC-3)",
+  "peakContentionWindowLocal": "13:33–19:25 ART",
+  "model": "gemini-4-hydrogen",
+  "location": "global",
+  "aborted429Runs": 24,
+  "abortedNetworkRuns": 4,
+  "notesByBatch": [
+    "Tanda 1 (13:27–13:47 ART): 7 exitosas antes de 4 rechazos 429 seguidos y 4 fetch failed.",
+    "Tanda 2 (14:52–15:03 ART): 4 exitosas antes de 3 rechazos 429 seguidos (circuit-breaker).",
+    "Tandas bucle PowerShell (15:17–19:25 ART): 4 exitosas (incl. mantenimiento::detailed::r2, vacaciones r3 y compras::fast::r3) y 17 corridas abortadas por 429 en horario pico de EE.UU.; entre 19:46–19:49 entraron las 3 restantes en serie."
+  ],
+  "gcpQuotaCheck": "IAM & Quotas (IMR-Challenge): gemini-4-hydrogen-qcd global = Ilimitado (Ajustable: No), Uso >90%: 0 (Dynamic Shared Quota)",
+  "mitigationNote": "El benchmark desactivó a propósito el fallback para medir solo Vertex AI; la app web real activa fallback automático a Google AI Studio + caché 30 min + modo Rápido por defecto."
+}

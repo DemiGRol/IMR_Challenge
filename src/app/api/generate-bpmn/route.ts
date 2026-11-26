@@ -12,7 +12,7 @@ import { ResilientLlmAdapter } from '@/lib/llm/adapter';
 import { GoogleAiStudioProvider } from '@/lib/llm/gemini-studio-provider';
 import { LlmProvider, LlmServiceError } from '@/lib/llm/types';
 import { VertexAiProvider } from '@/lib/llm/vertex-provider';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit, extractClientIp } from '@/lib/rate-limit';
 import { logGenerationTelemetry, TokenUsage } from '@/lib/telemetry';
 
 function mergeUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined {
@@ -37,20 +37,14 @@ const RequestSchema = z.object({
     .min(10, 'La descripción debe tener al menos 10 caracteres.')
     .max(4000, 'La descripción no puede superar los 4.000 caracteres.'),
   previousBpmnXml: z.string().max(150_000).optional(),
-  mode: z.enum(['detailed', 'fast']).default('detailed'),
+  mode: z.enum(['detailed', 'fast']).default('fast'),
   iterationMode: z.enum(['fresh', 'preserve-edits']).default('fresh'),
 });
-
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return req.headers.get('x-real-ip') || 'local';
-}
 
 export async function POST(req: NextRequest) {
   const requestId = randomUUID();
   const startedAt = performance.now();
-  const ip = getClientIp(req);
+  const ip = extractClientIp(req.headers);
   const rate = checkRateLimit(ip);
   if (!rate.allowed) {
     logGenerationTelemetry({
@@ -271,6 +265,7 @@ export async function POST(req: NextRequest) {
         outcome: 'error',
         httpStatus: 502,
         errorCode: 'BPMN_VALIDATION_ERROR',
+        mode,
         latencyMs: totalLatencyMs,
         attempts,
         repaired,
@@ -287,6 +282,7 @@ export async function POST(req: NextRequest) {
         outcome: 'error',
         httpStatus: err.statusCode,
         errorCode: err.code,
+        mode,
         latencyMs: totalLatencyMs,
         attempts,
         repaired,
@@ -302,6 +298,7 @@ export async function POST(req: NextRequest) {
       outcome: 'error',
       httpStatus: 500,
       errorCode: 'UNEXPECTED_ERROR',
+      mode,
       latencyMs: totalLatencyMs,
       attempts,
       repaired,

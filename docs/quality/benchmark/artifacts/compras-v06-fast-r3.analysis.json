@@ -1,0 +1,47 @@
+{
+  "assumptions": [
+    {
+      "question": "¿A quién y por qué medio se envía el recordatorio automático tras 24 horas sin aprobación?",
+      "assumption": "Se modeló como una tarea de servicio interna dentro del carril de Finanzas dirigida al analista asignado.",
+      "impact": "low",
+      "elementIds": [
+        "Task_Recordatorio"
+      ],
+      "sourceExcerpt": "si transcurren 24 horas sin resolución, se envía automáticamente un recordatorio"
+    },
+    {
+      "question": "¿Qué reglas específicas determinan cuándo activar la inspección física, el registro de facturas o el archivo por defecto?",
+      "assumption": "Se etiquetaron las ramas de la compuerta inclusiva de forma genérica manteniendo el archivo como flujo por defecto.",
+      "impact": "medium",
+      "elementIds": [
+        "Gw_PostPagoSplit"
+      ],
+      "sourceExcerpt": "pueden activarse una o más acciones según el tipo de compra"
+    },
+    {
+      "question": "¿Se notifica al Proveedor o al Solicitante cuando la orden se cancela tras el escalamiento a las 48 horas?",
+      "assumption": "Se asumió que el proceso finaliza internamente con la cancelación sin enviar mensajes adicionales.",
+      "impact": "high",
+      "elementIds": [
+        "End_OrdenCancelada"
+      ],
+      "sourceExcerpt": "Compras emite una alerta de escalamiento y cancela la orden con un evento de error"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo por políticas presupuestarias podría ser un evento final convencional",
+      "explanation": "En BPMN 2.0, un rechazo esperado por reglas de negocio no es una falla técnica, por lo que suele modelarse con un endEvent convencional (o de mensaje si se notifica). Se conservó errorEventDefinition según lo solicitado.",
+      "elementIds": [
+        "End_RechazoPolitica"
+      ]
+    },
+    {
+      "title": "El evento de escalamiento intermedio suele requerir un subproceso padre",
+      "explanation": "En BPMN 2.0, escalationEventDefinition está pensado para escalar desde un subproceso hacia un nivel superior. Al no haber subprocesos, se conservó el evento solicitado en el proceso principal.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    }
+  ]
+}

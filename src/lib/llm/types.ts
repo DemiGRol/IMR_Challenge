@@ -7,6 +7,13 @@ export interface GenerateBpmnInput {
   mode?: 'detailed' | 'fast';
 }
 
+export interface AnalyzeBpmnInput {
+  processDescription?: string;
+  currentBpmnXml: string;
+  resolvedQuestions?: string[];
+  mode?: 'detailed' | 'fast';
+}
+
 export type AssumptionImpact = 'high' | 'medium' | 'low';
 
 export interface StructuredAssumption {
@@ -31,10 +38,18 @@ export interface LlmRawBpmnOutput {
   finishReason?: string;
 }
 
+export interface LlmRawAnalyzeOutput {
+  assumptions: StructuredAssumption[];
+  recommendations: ModelingRecommendation[];
+  usage?: TokenUsage;
+  finishReason?: string;
+}
+
 export interface LlmProvider {
   readonly name: string;
   readonly model: string;
   generate(input: GenerateBpmnInput, signal: AbortSignal): Promise<LlmRawBpmnOutput>;
+  analyze?(input: AnalyzeBpmnInput, signal: AbortSignal): Promise<LlmRawAnalyzeOutput>;
 }
 
 export interface LlmGenerateResult {
@@ -50,6 +65,19 @@ export interface LlmGenerateResult {
     fallbackUsed: boolean;
     attempts: number;
     repaired: boolean;
+  };
+}
+
+export interface LlmAnalyzeResult {
+  assumptions: StructuredAssumption[];
+  recommendations: ModelingRecommendation[];
+  usage?: TokenUsage;
+  finishReason?: string;
+  meta: {
+    provider: string;
+    model: string;
+    latencyMs: number;
+    fallbackUsed: boolean;
   };
 }
 

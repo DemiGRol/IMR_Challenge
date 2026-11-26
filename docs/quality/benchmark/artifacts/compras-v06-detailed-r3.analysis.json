@@ -1,0 +1,78 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si el analista de Finanzas rechaza la compra en el portal ERP?",
+      "assumption": "Se asumió el camino feliz donde la tarea de aprobación en el ERP concluye con la aprobación para continuar hacia la emisión de la orden de compra.",
+      "impact": "high",
+      "elementIds": [
+        "Task_AprobarERP",
+        "Task_EnviarOC"
+      ],
+      "sourceExcerpt": "un analista de Finanzas revisa y aprueba la compra en el portal ERP"
+    },
+    {
+      "question": "¿Quién es el destinatario del recordatorio automático enviado tras 24 horas sin resolución?",
+      "assumption": "Se modeló como una tarea de servicio interna dentro de Finanzas sin especificar destinatario externo ni modificar el flujo principal de aprobación.",
+      "impact": "medium",
+      "elementIds": [
+        "Boundary_24h",
+        "Task_Recordatorio"
+      ],
+      "sourceExcerpt": "se envía automáticamente un recordatorio sin cancelar la tarea de aprobación"
+    },
+    {
+      "question": "¿Se notifica al solicitante cuando la solicitud es rechazada por no cumplir las políticas presupuestarias?",
+      "assumption": "Se modeló únicamente el cierre de error en Finanzas según lo descrito, sin agregar un envío de notificación al solicitante.",
+      "impact": "medium",
+      "elementIds": [
+        "End_RechazoPoliticas"
+      ],
+      "sourceExcerpt": "la solicitud se rechaza con un cierre de error"
+    },
+    {
+      "question": "¿Quién recibe la alerta de escalamiento tras 48 horas sin respuesta y se notifica la cancelación al proveedor?",
+      "assumption": "Se representó el escalamiento como un evento intermedio de lanzamiento interno antes de cancelar la orden, sin enviar mensaje de cancelación al proveedor.",
+      "impact": "medium",
+      "elementIds": [
+        "Throw_Escalamiento",
+        "End_OrdenCancelada"
+      ],
+      "sourceExcerpt": "Compras emite una alerta de escalamiento y cancela la orden"
+    },
+    {
+      "question": "¿Qué criterios específicos de negocio determinan si aplica inspección física, registro de facturas o archivo por defecto?",
+      "assumption": "Se etiquetaron las ramas de la compuerta inclusiva con los nombres descriptivos de las acciones y se dejó el archivo del comprobante como flujo por defecto.",
+      "impact": "medium",
+      "elementIds": [
+        "Gw_AccionesSplit",
+        "Task_Inspeccionar",
+        "Task_RegistrarFacturas",
+        "Task_Archivar"
+      ],
+      "sourceExcerpt": "pueden activarse una o más acciones según el tipo de compra"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo presupuestario podría ser un evento final convencional",
+      "explanation": "En BPMN 2.0, un resultado desfavorable esperado del negocio (como no cumplir políticas presupuestarias) se modela preferentemente con un evento final convencional o de mensaje hacia el solicitante, reservando errorEventDefinition para fallas técnicas. Se conservó errorEventDefinition según lo solicitado en la descripción.",
+      "elementIds": [
+        "End_RechazoPoliticas"
+      ]
+    },
+    {
+      "title": "El escalamiento sin subproceso padre podría modelarse como tarea o evento de mensaje",
+      "explanation": "En BPMN 2.0, escalationEventDefinition está pensado para propagarse hacia un evento de borde en un subproceso contenedor. Al no existir subproceso padre, suele ser más claro usar una tarea de notificación o un evento de mensaje; se conservó escalationEventDefinition según lo solicitado.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    },
+    {
+      "title": "La cancelación de orden por vencimiento podría usar un evento final convencional o de mensaje",
+      "explanation": "La falta de respuesta del proveedor en 48 horas es una excepción de negocio más que una falla técnica de sistema, por lo que suele modelarse con un evento final convencional o de mensaje. Se conservó errorEventDefinition según lo solicitado.",
+      "elementIds": [
+        "End_OrdenCancelada"
+      ]
+    }
+  ]
+}

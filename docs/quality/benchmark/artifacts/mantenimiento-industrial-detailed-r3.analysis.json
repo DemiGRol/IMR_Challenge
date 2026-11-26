@@ -1,0 +1,55 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si la prueba operativa realizada por Calidad detecta fallas y no aprueba la reparación?",
+      "assumption": "Se asumió el flujo exitoso donde Calidad aprueba la prueba y Mantenimiento habilita la máquina, sin incluir un bucle de retrabajo.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Prueba",
+        "Task_Habilitar"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina"
+    },
+    {
+      "question": "¿La reprogramación de producción tras vencer las 72 horas cierra la orden de trabajo o la deja en espera hasta recibir los repuestos?",
+      "assumption": "Se asumió que el vencimiento de las 72 horas finaliza esa rama con la reprogramación de la producción, sin continuar hacia la reparación.",
+      "impact": "high",
+      "elementIds": [
+        "Catch_Timeout",
+        "Task_Reprogramar",
+        "End_Reprogramada"
+      ],
+      "sourceExcerpt": "se escala la demora a Gerencia de Planta y se reprograma la producción"
+    },
+    {
+      "question": "¿Cómo se gestiona la entrega y recepción física de los repuestos una vez que el proveedor confirma dentro de las 72 horas?",
+      "assumption": "Se asumió que la confirmación del proveedor habilita la disponibilidad de repuestos para continuar hacia la reparación sin modelar un paso separado de recepción en almacén.",
+      "impact": "medium",
+      "elementIds": [
+        "Catch_Confirmacion",
+        "Gw_StockMerge"
+      ],
+      "sourceExcerpt": "espera su confirmación hasta un máximo de 72 horas"
+    },
+    {
+      "question": "¿Las actividades de registro de orden y verificación de stock se realizan mediante un sistema de gestión o de forma manual?",
+      "assumption": "Se modelaron como tareas genéricas debido a que la descripción no especifica soporte de sistemas informáticos.",
+      "impact": "low",
+      "elementIds": [
+        "Task_RegistrarOT",
+        "Task_VerificarStock",
+        "Task_Reparar"
+      ],
+      "sourceExcerpt": "Mantenimiento registra la orden de trabajo"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Uso de escalationEventDefinition sin subproceso padre",
+      "explanation": "En BPMN 2.0, un evento intermedio de lanzamiento de escalamiento (escalationEventDefinition) suele utilizarse junto a un subproceso padre que lo capture mediante un evento de borde. Al tratarse de un proceso plano sin subprocesos, se conservó el evento de escalamiento para reflejar el texto, aunque alternativamente podría modelarse como una tarea de notificación interna hacia Gerencia de Planta.",
+      "elementIds": [
+        "Throw_Escalar"
+      ]
+    }
+  ]
+}

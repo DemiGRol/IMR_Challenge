@@ -1,0 +1,55 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si la prueba operativa realizada por Calidad falla y la máquina no queda apta para operar?",
+      "assumption": "Se asumió que la prueba operativa resulta exitosa y permite continuar directamente con la habilitación de la máquina y el cierre de la orden.",
+      "impact": "high",
+      "elementIds": [
+        "Task_PruebaOperativa",
+        "Task_HabilitarYCerrar"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina"
+    },
+    {
+      "question": "Tras escalar la demora a Gerencia de Planta y reprogramar la producción, ¿la orden de mantenimiento finaliza o queda en espera de un nuevo proveedor?",
+      "assumption": "Se asumió que la reprogramación de la producción concluye la instancia actual del flujo con un evento de fin diferenciado.",
+      "impact": "high",
+      "elementIds": [
+        "Throw_EscalarDemora",
+        "Task_Reprogramar",
+        "End_Reprogramada"
+      ],
+      "sourceExcerpt": "se escala la demora a Gerencia de Planta y se reprograma la producción."
+    },
+    {
+      "question": "Cuando el Proveedor confirma dentro de las 72 horas, ¿los repuestos quedan disponibles de inmediato o existe una actividad explícita de recepción antes de reparar?",
+      "assumption": "Se asumió que tras la confirmación del proveedor los repuestos pasan a estar disponibles para continuar con la reparación sin modelar una recepción adicional.",
+      "impact": "medium",
+      "elementIds": [
+        "Catch_Confirmacion",
+        "Gw_MergeStock",
+        "Task_Reparar"
+      ],
+      "sourceExcerpt": "espera su confirmación hasta un máximo de 72 horas."
+    },
+    {
+      "question": "¿Qué sucede si durante la inspección en sitio el técnico detecta que se requieren repuestos adicionales o que la falla no es reparable?",
+      "assumption": "Se asumió que la inspección en sitio siempre converge con la disponibilidad de repuestos para ejecutar la reparación.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Inspeccionar",
+        "Gw_ParallelJoin"
+      ],
+      "sourceExcerpt": "un técnico realiza la inspección en sitio"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Evento de escalamiento sin subproceso padre",
+      "explanation": "En BPMN 2.0, un evento intermedio de lanzamiento de escalamiento (escalationEventDefinition) está diseñado para propagarse hacia un evento de borde capturador en un subproceso padre. Se conservó en el diagrama para reflejar el escalamiento solicitado a Gerencia de Planta, aunque como alternativa podría modelarse mediante una tarea de envío o notificación.",
+      "elementIds": [
+        "Throw_EscalarDemora"
+      ]
+    }
+  ]
+}
