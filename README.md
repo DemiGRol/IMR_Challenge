@@ -1,4 +1,4 @@
-# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.2`)
+# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.3`)
 
 Aplicación web que transforma descripciones textuales de procesos de negocio en diagramas **BPMN 2.0** válidos, legibles y editables interactivamente mediante **bpmn.io (`bpmn-js`)**, impulsada por **Vertex AI (GCP)** a través de un patrón **LLM Adapter** con fallback resiliente.
 
@@ -6,7 +6,7 @@ Aplicación web que transforma descripciones textuales de procesos de negocio en
 
 ---
 
-## Características implementadas (`v0.7.2`)
+## Características implementadas (`v0.7.3`)
 - **Descripción en lenguaje natural** (10–4.000 caracteres) con 4 ejemplos precargados (lineal, decisión XOR, paralelismo AND y colaboración con eventos).
 - **Modos de generación `Rápido` (predeterminado) y `Detallado`** vía **Vertex AI (`gemini-4-hydrogen` en `global`)** con fallback a **Google AI Studio** (`ResilientLlmAdapter` con *deadline* compartido), Structured Outputs (`{ bpmnXml, assumptions, recommendations }`) y hasta 1 reintento automático de auto-reparación.
 - **Cobertura BPMN 2.0 ampliada y layouter determinista generalizado**:
@@ -56,7 +56,7 @@ npm run dev
 
 ### Scripts disponibles
 - `npm run dev`: servidor de desarrollo Next.js.
-- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 33 tests).
+- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 34 tests).
 - `npm run typecheck`: verificación estricta de TypeScript (`tsc --noEmit`).
 - `npm run build`: compilación de producción (`next build`).
 - `npm run benchmark`: corrida comparativa de modos (`-- --report-only` regenera el dashboard HTML con las corridas locales).
@@ -65,7 +65,8 @@ npm run dev
 ---
 
 ## Arquitectura y documentación de diseño
-- **Consigna y requisitos**: [docs/brief/challenge.md](docs/brief/challenge.md), [docs/requirements/wbs.md](docs/requirements/wbs.md), [docs/requirements/user-stories.md](docs/requirements/user-stories.md).
+- **Consigna y requisitos**: [docs/brief/challenge.md](docs/brief/challenge.md), [docs/requirements/wbs.md](docs/requirements/wbs.md), [docs/requirements/user-stories.md](docs/requirements/user-stories.md) y [matriz de trazabilidad](docs/requirements/traceability.md).
+- **Arquitectura, contratos y diagramas (`as-built`)**: [docs/architecture/README.md](docs/architecture/README.md), [contracts.md](docs/architecture/contracts.md) y [docs/diagrams/README.md](docs/diagrams/README.md) ([DFD-0](docs/diagrams/dfd-0.md), [Componentes](docs/diagrams/architecture.md), [Secuencia](docs/diagrams/sequence.md), [Estados](docs/diagrams/states.md)).
 - **Decisiones técnicas (ADRs)**:
   - [ADR-001](docs/architecture/decisions/ADR-001-bpmn-strategy.md): BPMN 2.0 XML semántico + layout determinista.
   - [ADR-002](docs/architecture/decisions/ADR-002-stack-and-hosting.md): Next.js (App Router, TypeScript) en Vercel Hobby (\$0).
@@ -73,7 +74,7 @@ npm run dev
   - [ADR-004](docs/architecture/decisions/ADR-004-no-embeddings-rag-mvp.md): Descarte explícito de Embeddings/RAG en MVP.
   - [ADR-005](docs/architecture/decisions/ADR-005-tiered-llm-fallback.md): Estrategia de fallback Vertex AI → Google AI Studio.
   - [ADR-006](docs/architecture/decisions/ADR-006-collaboration-and-events.md): Colaboración BPMN 2.0, eventos y layout de swimlanes.
-- **Calidad y benchmark**: [report.md](docs/quality/benchmark/report.md) y [dashboard.html](docs/quality/benchmark/dashboard.html).
+- **Calidad, UX y benchmark**: [test-plan.md](docs/quality/test-plan.md), [ux/README.md](docs/ux/README.md), [report.md](docs/quality/benchmark/report.md) y [dashboard.html](docs/quality/benchmark/dashboard.html).
 - **Bitácora de incidentes y aprendizajes**: [docs/defense/issues-and-lessons.md](docs/defense/issues-and-lessons.md).
 - **Roadmap futuro**: [docs/roadmap-future.md](docs/roadmap-future.md).
 

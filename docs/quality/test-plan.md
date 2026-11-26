@@ -1,5 +1,21 @@
-# Plan de validación — propuesta
-| ID | Criterio | Entrada/escenario | Resultado esperado | Tipo de prueba | Estado | Evidencia |
-|---|---|---|---|---|---|---|
+# Plan de Validación y Evidencia (`as-built` · `v0.7.3`)
 
-Cubrir flujo real de LLM, secuencia simple, decisiones/ramificaciones según soporte, referencias y XML inválidos, DI/layout, fidelidad semántica, edición efectiva, prompt ambiguo, error/timeouts del proveedor, pérdida de cambios, secretos y ejecución limpia. Separar mocks de pruebas reales. No ejecutar llamadas pagas sin autorización.
+- **Estado**: `verificado` (`v0.7.3`, actualizado el `26/11/2026`).
+- **Estrategia**: separación estricta entre **pruebas deterministas unitarias/regresión con dobles locales** (`tests/core.test.ts`, `scripts/spike-bpmn.ts`) y **corridas reales contra Vertex AI / Google AI Studio** (`scripts/benchmark-modes.ts`, verificación en vivo).
+
+## Casos ejecutados y verificados
+
+| ID | Criterio | Escenario / Entrada | Resultado esperado y verificado | Tipo de prueba | Estado | Evidencia |
+|---|---|---|---|---|---|---|
+| **TC-01** | Flujo real LLM (`REQ-02`) | Descripciones en español (lineal, mantenimiento industrial, compras con eventos) en `Rápido` y `Detallado` | JSON válido (`bpmnXml`, `assumptions`, `recommendations`), `finishReason = STOP`, sin fuga de secretos | Integración real | verificado | [benchmark/report.md](benchmark/report.md) (`18/18` OK, `USD 0.7750`) |
+| **TC-02** | Validación XML y seguridad (`REQ-03`) | Payloads con `<!DOCTYPE>`, `<!ENTITY>`, `<script>`, handlers DOM, IDs no-`NCName` (manteniendo textos benignos como `online=activo`) | Bloqueo estricto vía `BpmnValidationError` antes y después del layout | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-03** | Subconjunto y referencias BPMN (`REQ-03`) | IDs duplicados, `SubProcess`, `MessageFlow` intra-pool, `BoundaryEvent` con `attachedToRef` inválido o flujo entrante | Rechazo determinista con mensaje accionable para auto-reparación | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-04** | Layout determinista simple + fallback (`REQ-04`) | Procesos lineales, XOR, paralelos y grafos cíclicos donde falla `bpmn-auto-layout` (`INC-14`) | `BPMNDiagram` DI válido generado por `bpmn-auto-layout` o `buildFallbackLayout()` sin re-llamar al LLM | Spike + Unitaria | verificado | `scripts/spike-bpmn.ts` (`3/3`), `tests/core.test.ts` |
+| **TC-05** | Colaboración, eventos y puertos (`REQ-04`/`05`) | Pools *white/black-box*, Lanes, `BoundaryEvent` múltiples, `InclusiveGateway` + `default`, flujos ascendentes entre carriles, retornos y saltos largos | Puertos diferenciados entrada/salida, compactación densa de sub-filas, saltos rectos despejados y autopistas perimetrales | Regresión geométrica | verificado | `tests/core.test.ts` (`34/34` `npm test`) + `separateOverlappingEdges` |
+| **TC-06** | Compatibilidad `.bpmn` multi-prefijo | Importación/compactación XML con prefijos `bpmn:`, `bpmn2:` o namespace por defecto sin prefijo | `compactBpmnForPrompt()` y `countBpmnStats()` conservan semántica sin `BPMNDiagram` | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-07** | Caché y aislamiento de modos | Misma descripción con espacios/mayúsculas distintos; aislamiento `fast` vs `detailed` y modelo | Reutilización segura por hash SHA-256 versionado (`CACHE_VERSION`) | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-08** | Rate limit y anti-spoofing IP | Ráfaga >10 req/min y headers `x-vercel-forwarded-for`, `x-real-ip`, `x-forwarded-for` | Bloqueo `429` en solicitud 11, store acotado FIFO (`MAX_STORE_SIZE = 2000`) | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-09** | Failover y deadline compartido | Error retryable en proveedor primario vs. error fatal no retryable en `ResilientLlmAdapter` | Failover automático en error reintentable respetando deadline; corte inmediato en error fatal | Unitaria con doble | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-10** | Telemetría y cálculo USD | Uso de tokens (`prompt`, `output`, `thinking`) para `gemini-4-hydrogen` (`global`/`regional`) y `gemini-2.5-flash` | Cálculo exacto según tarifas oficiales y registro en buffer vivo | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
+| **TC-11** | Edición, autosave y UX/UI (`REQ-01`/`05`) | Edición en `bpmn-js@18` (`Ctrl+clic`, reordenar boundary), recarga con `localStorage`, cancelación, accesibilidad y responsive `<=900px` | Persistencia en cada edición (`diagramRevision`), overlay cerrable, teclado en cards y contraste AA | Auditoría UX/UI + build | verificado | `v0.7.2`, `tsc --noEmit` (0), `next build` OK |
+| **TC-12** | Entrega reproducible y despliegue (`REQ-06`) | Build limpio de producción, cabeceras HTTP de seguridad y despliegue público | Compilación limpia (`8/8` rutas) y URL pública operativa en Vercel Hobby + Fluid Compute | Build + Verificación web | verificado | `next build` OK · `https://imr-challenge.vercel.app/` |
