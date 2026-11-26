@@ -3,12 +3,16 @@
 import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import {
+  BrandIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CodeIcon,
   CopyIcon,
   DownloadIcon,
   FitIcon,
   PlusIcon,
   RedoIcon,
+  SwapIcon,
   UndoIcon,
   UploadIcon,
   ZoomInIcon,
@@ -20,16 +24,48 @@ interface BpmnCanvas {
   addMarker: (elementId: string, marker: string) => void;
   removeMarker: (elementId: string, marker: string) => void;
   scrollToElement?: (element: unknown) => void;
+  getRootElement?: () => BpmnShape | undefined;
   viewbox: (box?: { x: number; y: number; width: number; height: number }) => {
     x: number;
     y: number;
     width: number;
     height: number;
+    scale?: number;
   };
 }
 
 interface BpmnElementRegistry {
-  get: (id: string) => { x?: number; y?: number; width?: number; height?: number } | undefined;
+  get: (id: string) => BpmnShape | undefined;
+}
+
+interface BpmnShape {
+  id: string;
+  type?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  parent?: BpmnShape;
+  host?: BpmnShape;
+  attachers?: BpmnShape[];
+  outgoing?: unknown[];
+}
+
+interface BpmnModeling {
+  moveElements: (
+    shapes: BpmnShape[],
+    delta: { x: number; y: number },
+    target?: BpmnShape,
+    hints?: { attach?: boolean }
+  ) => void;
+  layoutConnection: (connection: unknown, hints?: Record<string, unknown>) => void;
+}
+
+interface BpmnSelection {
+  get: () => BpmnShape[];
+  select: (elements: BpmnShape | BpmnShape[], add?: boolean) => void;
+  deselect: (element: BpmnShape) => void;
+  isSelected: (element: BpmnShape) => boolean;
 }
 
 interface BpmnCommandStack {
@@ -39,13 +75,41 @@ interface BpmnCommandStack {
   canRedo: () => boolean;
 }
 
+type BpmnBusCallback = (e?: {
+  element?: BpmnShape;
+  originalEvent?: MouseEvent;
+  newSelection?: BpmnShape[];
+  context?: { shape?: BpmnShape; shapes?: BpmnShape[] };
+}) => unknown;
+
 interface BpmnEventBus {
-  on: (event: string, callback: (e?: { element?: { id?: string } }) => void) => void;
-  off: (event: string, callback: (e?: { element?: { id?: string } }) => void) => void;
+  on: (
+    event: string,
+    priorityOrCallback: number | BpmnBusCallback,
+    callback?: BpmnBusCallback
+  ) => void;
+  off: (event: string, callback: BpmnBusCallback) => void;
+}
+
+interface BoundaryAnchorPos {
+  left: number;
+  top: number;
+  placement: 'above' | 'below';
+}
+
+interface BoundaryReorderContext {
+  hostId: string;
+  selectedBoundaryId: string | null;
+  count: number;
+  index: number;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  anchorPos: BoundaryAnchorPos | null;
 }
 
 interface BpmnEditorProps {
   xml: string | null;
+  loadRevision?: number;
   blankTrigger: number;
   loading: boolean;
   elapsedSec: number;
@@ -53,10 +117,58 @@ interface BpmnEditorProps {
   assumptionElementIds: string[];
   onElementSelectAssumption: (elementId: string) => void;
   onImportBpmn: (xml: string, filename: string) => void;
+  onImportResult?: (ok: boolean) => void;
   xmlGetterRef: MutableRefObject<(() => Promise<string | null>) | null>;
   onCreateBlank: () => void;
+  onFocusDescription?: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onNotify: (message: string) => void;
+}
+
+const CLIENT_FORBIDDEN_IMPORT_PATTERNS = [
+  /<!DOCTYPE/i,
+  /<!ENTITY/i,
+  /<script\b/i,
+  /javascript:/i,
+];
+
+function computeAnchorPos(
+  host: BpmnShape,
+  canvas: BpmnCanvas | null,
+  container: HTMLDivElement | null
+): BoundaryAnchorPos | null {
+  if (
+    !canvas ||
+    typeof host.x !== 'number' ||
+    typeof host.y !== 'number' ||
+    typeof host.width !== 'number' ||
+    typeof host.height !== 'number'
+  ) {
+    return null;
+  }
+  const vb = canvas.viewbox();
+  const stageW = container?.clientWidth || 800;
+  const stageH = container?.clientHeight || 600;
+  const scale =
+    typeof vb.scale === 'number' && vb.scale > 0
+      ? vb.scale
+      : vb.width > 0
+        ? stageW / vb.width
+        : 1;
+
+  const hostCenterX = (host.x + host.width / 2 - vb.x) * scale;
+  const topAbove = (host.y - vb.y) * scale - 12;
+  const placement: 'above' | 'below' = topAbove < 56 ? 'below' : 'above';
+  const rawTop =
+    placement === 'below' ? (host.y + host.height + 48 - vb.y) * scale : topAbove;
+
+  const left = Math.max(135, Math.min(Math.max(135, stageW - 135), hostCenterX));
+  const top =
+    placement === 'above'
+      ? Math.max(54, Math.min(Math.max(54, stageH - 16), rawTop))
+      : Math.max(12, Math.min(Math.max(12, stageH - 54), rawTop));
+
+  return { left, top, placement };
 }
 
 function triggerDownload(content: string, filename: string, mimeType: string): void {
@@ -83,6 +195,7 @@ function getLoadingPhase(elapsedSec: number): { label: string; pct: number } {
 
 export default function BpmnEditor({
   xml,
+  loadRevision = 0,
   blankTrigger,
   loading,
   elapsedSec,
@@ -90,8 +203,10 @@ export default function BpmnEditor({
   assumptionElementIds,
   onElementSelectAssumption,
   onImportBpmn,
+  onImportResult,
   xmlGetterRef,
   onCreateBlank,
+  onFocusDescription,
   onDirtyChange,
   onNotify,
 }: BpmnEditorProps) {
@@ -100,8 +215,13 @@ export default function BpmnEditor({
   const modelerRef = useRef<BpmnModeler | null>(null);
   const prevHighlightedRef = useRef<string[]>([]);
   const prevAssumptionMarkedRef = useRef<string[]>([]);
+  const isReorderingRef = useRef(false);
   const onSelectRef = useRef(onElementSelectAssumption);
   onSelectRef.current = onElementSelectAssumption;
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+  const onImportResultRef = useRef(onImportResult);
+  onImportResultRef.current = onImportResult;
   const [importError, setImportError] = useState<string | null>(null);
   const [hasDiagram, setHasDiagram] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
@@ -109,6 +229,54 @@ export default function BpmnEditor({
   const [zoomPct, setZoomPct] = useState(100);
   const [xmlOpen, setXmlOpen] = useState(false);
   const [currentXml, setCurrentXml] = useState('');
+  const [boundaryContext, setBoundaryContext] = useState<BoundaryReorderContext | null>(null);
+  const [multiSelectCount, setMultiSelectCount] = useState(0);
+
+  const computeBoundaryContext = useCallback(
+    (selectedShapes: BpmnShape[]): BoundaryReorderContext | null => {
+      const primary = selectedShapes[0];
+      if (!primary) return null;
+      const canvas = modelerRef.current
+        ? (modelerRef.current.get('canvas') as BpmnCanvas)
+        : null;
+
+      if (primary.type === 'bpmn:BoundaryEvent' && primary.host?.id) {
+        const attachers = (primary.host.attachers || [])
+          .filter((a) => a.type === 'bpmn:BoundaryEvent' && typeof a.x === 'number')
+          .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+        if (attachers.length < 2) return null;
+        const index = attachers.findIndex((a) => a.id === primary.id);
+        if (index === -1) return null;
+        return {
+          hostId: primary.host.id,
+          selectedBoundaryId: primary.id,
+          count: attachers.length,
+          index,
+          canMoveLeft: index > 0,
+          canMoveRight: index < attachers.length - 1,
+          anchorPos: computeAnchorPos(primary.host, canvas, containerRef.current),
+        };
+      }
+
+      const hostAttachers = (primary.attachers || []).filter(
+        (a) => a.type === 'bpmn:BoundaryEvent' && typeof a.x === 'number'
+      );
+      if (hostAttachers.length >= 2) {
+        return {
+          hostId: primary.id,
+          selectedBoundaryId: null,
+          count: hostAttachers.length,
+          index: 0,
+          canMoveLeft: false,
+          canMoveRight: false,
+          anchorPos: computeAnchorPos(primary, canvas, containerRef.current),
+        };
+      }
+
+      return null;
+    },
+    []
+  );
 
   const syncZoom = useCallback(() => {
     const modeler = modelerRef.current;
@@ -131,23 +299,122 @@ export default function BpmnEditor({
 
     const eventBus = modeler.get('eventBus') as BpmnEventBus;
     const commandStack = modeler.get('commandStack') as BpmnCommandStack;
+    const selection = modeler.get('selection') as BpmnSelection;
+    const modeling = modeler.get('modeling') as BpmnModeling;
+    const registry = modeler.get('elementRegistry') as BpmnElementRegistry;
+    const canvas = modeler.get('canvas') as BpmnCanvas;
 
-    const onStackChanged = () => {
+    const countMultiSelected = (shapes: BpmnShape[]): number =>
+      shapes.filter(
+        (s) =>
+          s.type !== 'bpmn:Participant' &&
+          s.type !== 'bpmn:Lane' &&
+          s.type !== 'bpmn:Process' &&
+          s.type !== 'bpmn:Collaboration' &&
+          s.type !== 'label'
+      ).length;
+
+    const refreshBoundarySelection = () => {
+      const current = selection.get() || [];
+      setBoundaryContext(computeBoundaryContext(current));
+      setMultiSelectCount(countMultiSelected(current));
+    };
+
+    const onStackChanged: BpmnBusCallback = () => {
       const undoable = commandStack.canUndo();
       setCanUndo(undoable);
       setCanRedo(commandStack.canRedo());
-      if (undoable) {
-        onDirtyChange(true);
+      onDirtyChangeRef.current(undoable);
+      refreshBoundarySelection();
+    };
+
+    const onSelectionChanged: BpmnBusCallback = (event) => {
+      const current = event?.newSelection || [];
+      setBoundaryContext(computeBoundaryContext(current));
+      setMultiSelectCount(countMultiSelected(current));
+    };
+
+    const isCtrlMultiTarget = (
+      event?: Parameters<BpmnBusCallback>[0]
+    ): event is { element: BpmnShape; originalEvent: MouseEvent } => {
+      const orig = event?.originalEvent;
+      const el = event?.element;
+      if (!orig || !el || orig.button !== 0 || orig.shiftKey || !(orig.ctrlKey || orig.metaKey)) {
+        return false;
+      }
+      const rootEl = canvas.getRootElement?.();
+      if (rootEl && el === rootEl) return false;
+      return (
+        el.type !== 'bpmn:Participant' &&
+        el.type !== 'bpmn:Lane' &&
+        el.type !== 'bpmn:Process' &&
+        el.type !== 'bpmn:Collaboration'
+      );
+    };
+
+    const onCtrlMultiMouseDown: BpmnBusCallback = (event) => {
+      if (!isCtrlMultiTarget(event)) return undefined;
+      if (selection.isSelected(event.element)) {
+        selection.deselect(event.element);
+      } else {
+        selection.select(event.element, true);
+      }
+      return false;
+    };
+
+    const onCtrlMultiClick: BpmnBusCallback = (event) => {
+      if (isCtrlMultiTarget(event)) {
+        return false;
+      }
+      return undefined;
+    };
+
+    const onBoundaryMoved: BpmnBusCallback = (event) => {
+      if (isReorderingRef.current) return;
+      const moved = event?.context?.shape
+        ? [event.context.shape]
+        : event?.context?.shapes || [];
+      const hostsToRelayout = new Set<string>();
+      for (const s of moved) {
+        if (s.type === 'bpmn:BoundaryEvent' && s.host?.id) {
+          hostsToRelayout.add(s.host.id);
+        }
+      }
+      if (hostsToRelayout.size === 0) return;
+
+      isReorderingRef.current = true;
+      try {
+        for (const hostId of hostsToRelayout) {
+          const host = registry.get(hostId);
+          for (const att of host?.attachers || []) {
+            if (att.type !== 'bpmn:BoundaryEvent') continue;
+            for (const conn of att.outgoing || []) {
+              modeling.layoutConnection(conn);
+            }
+          }
+        }
+      } catch {
+        // Ignora errores transitorios al recalcular flujos tras arrastre manual.
+      } finally {
+        isReorderingRef.current = false;
       }
     };
 
-    const onViewboxChanged = () => syncZoom();
-    const onElementClick = (event?: { element?: { id?: string } }) => {
+    const onViewboxChanged: BpmnBusCallback = () => {
+      syncZoom();
+      refreshBoundarySelection();
+    };
+    const onElementClick: BpmnBusCallback = (event) => {
       const id = event?.element?.id;
       if (id) onSelectRef.current(id);
     };
 
     eventBus.on('commandStack.changed', onStackChanged);
+    eventBus.on('selection.changed', onSelectionChanged);
+    eventBus.on('element.mousedown', 2000, onCtrlMultiMouseDown);
+    eventBus.on('element.click', 2000, onCtrlMultiClick);
+    eventBus.on('commandStack.shape.move.postExecuted', onBoundaryMoved);
+    eventBus.on('commandStack.elements.move.postExecuted', onBoundaryMoved);
     eventBus.on('canvas.viewbox.changed', onViewboxChanged);
     eventBus.on('element.click', onElementClick);
 
@@ -163,12 +430,17 @@ export default function BpmnEditor({
     return () => {
       xmlGetterRef.current = null;
       eventBus.off('commandStack.changed', onStackChanged);
+      eventBus.off('selection.changed', onSelectionChanged);
+      eventBus.off('element.mousedown', onCtrlMultiMouseDown);
+      eventBus.off('element.click', onCtrlMultiClick);
+      eventBus.off('commandStack.shape.move.postExecuted', onBoundaryMoved);
+      eventBus.off('commandStack.elements.move.postExecuted', onBoundaryMoved);
       eventBus.off('canvas.viewbox.changed', onViewboxChanged);
       eventBus.off('element.click', onElementClick);
       modeler.destroy();
       modelerRef.current = null;
     };
-  }, [onDirtyChange, syncZoom, xmlGetterRef]);
+  }, [computeBoundaryContext, syncZoom, xmlGetterRef]);
 
   useEffect(() => {
     const modeler = modelerRef.current;
@@ -176,6 +448,7 @@ export default function BpmnEditor({
 
     let cancelled = false;
     setImportError(null);
+    setBoundaryContext(null);
 
     modeler
       .importXML(xml)
@@ -187,20 +460,23 @@ export default function BpmnEditor({
         setHasDiagram(true);
         setCanUndo(false);
         setCanRedo(false);
-        onDirtyChange(false);
+        onDirtyChangeRef.current(false);
+        onImportResultRef.current?.(true);
       })
       .catch(() => {
         if (cancelled) return;
         setHasDiagram(false);
+        setBoundaryContext(null);
         setImportError(
-          'No se pudo renderizar el diagrama BPMN en el editor. Intentá regenerar el proceso.'
+          'No se pudo renderizar el diagrama BPMN en el editor. Intentá regenerar o verificá el archivo importado.'
         );
+        onImportResultRef.current?.(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [xml, onDirtyChange, syncZoom]);
+  }, [xml, loadRevision, syncZoom]);
 
   useEffect(() => {
     if (blankTrigger === 0) return;
@@ -209,6 +485,7 @@ export default function BpmnEditor({
 
     let cancelled = false;
     setImportError(null);
+    setBoundaryContext(null);
 
     modeler
       .createDiagram()
@@ -220,7 +497,7 @@ export default function BpmnEditor({
         setHasDiagram(true);
         setCanUndo(false);
         setCanRedo(false);
-        onDirtyChange(false);
+        onDirtyChangeRef.current(false);
       })
       .catch(() => {
         if (cancelled) return;
@@ -230,7 +507,7 @@ export default function BpmnEditor({
     return () => {
       cancelled = true;
     };
-  }, [blankTrigger, onDirtyChange, syncZoom]);
+  }, [blankTrigger, syncZoom]);
 
   useEffect(() => {
     const modeler = modelerRef.current;
@@ -270,6 +547,7 @@ export default function BpmnEditor({
     }
     prevHighlightedRef.current = validIds;
 
+    let rafId = 0;
     if (validIds.length > 0) {
       const firstEl = registry.get(validIds[0]);
       if (firstEl && typeof firstEl.x === 'number' && typeof firstEl.y === 'number') {
@@ -288,11 +566,17 @@ export default function BpmnEditor({
             width: startVb.width,
             height: startVb.height,
           });
-          if (t < 1) requestAnimationFrame(animate);
+          if (t < 1) {
+            rafId = requestAnimationFrame(animate);
+          }
         };
-        requestAnimationFrame(animate);
+        rafId = requestAnimationFrame(animate);
       }
     }
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, [highlightedElementIds, hasDiagram]);
 
   const handleZoom = (delta: number) => {
@@ -335,10 +619,21 @@ export default function BpmnEditor({
       return;
     }
     const reader = new FileReader();
+    reader.onerror = () => {
+      setImportError('No se pudo leer el archivo seleccionado.');
+    };
     reader.onload = () => {
       const content = typeof reader.result === 'string' ? reader.result : '';
       if (!content.trim()) {
         setImportError('El archivo seleccionado está vacío.');
+        return;
+      }
+      if (CLIENT_FORBIDDEN_IMPORT_PATTERNS.some((pattern) => pattern.test(content))) {
+        setImportError('El archivo .bpmn contiene directivas o scripts no permitidos.');
+        return;
+      }
+      if (!/<(?:[a-zA-Z0-9_-]+:)?definitions\b/i.test(content)) {
+        setImportError('El archivo seleccionado no es un documento BPMN 2.0 válido (<definitions>).');
         return;
       }
       onImportBpmn(content, file.name);
@@ -374,6 +669,105 @@ export default function BpmnEditor({
     setXmlOpen((open) => !open);
   };
 
+  const handleReorderBoundary = (direction: 'left' | 'right' | 'swap') => {
+    const modeler = modelerRef.current;
+    if (!modeler || !hasDiagram || !boundaryContext) return;
+
+    const registry = modeler.get('elementRegistry') as BpmnElementRegistry;
+    const modeling = modeler.get('modeling') as BpmnModeling;
+    const selection = modeler.get('selection') as BpmnSelection;
+
+    const host = registry.get(boundaryContext.hostId);
+    if (!host || typeof host.x !== 'number' || typeof host.y !== 'number' || typeof host.width !== 'number' || typeof host.height !== 'number') {
+      return;
+    }
+
+    const attachers = (host.attachers || [])
+      .filter(
+        (a) =>
+          a.type === 'bpmn:BoundaryEvent' &&
+          typeof a.x === 'number' &&
+          typeof a.y === 'number' &&
+          typeof a.width === 'number' &&
+          typeof a.height === 'number'
+      )
+      .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+
+    if (attachers.length < 2) return;
+
+    const reordered = [...attachers];
+    if (boundaryContext.selectedBoundaryId) {
+      const idx = attachers.findIndex((a) => a.id === boundaryContext.selectedBoundaryId);
+      if (idx === -1) return;
+      if (direction === 'left' && idx > 0) {
+        [reordered[idx - 1], reordered[idx]] = [reordered[idx], reordered[idx - 1]];
+      } else if (direction === 'right' && idx < reordered.length - 1) {
+        [reordered[idx], reordered[idx + 1]] = [reordered[idx + 1], reordered[idx]];
+      } else if (direction === 'swap' && reordered.length === 2) {
+        [reordered[0], reordered[1]] = [reordered[1], reordered[0]];
+      } else {
+        return;
+      }
+    } else if (attachers.length === 2) {
+      [reordered[0], reordered[1]] = [reordered[1], reordered[0]];
+    } else {
+      const first = reordered.shift();
+      if (first) reordered.push(first);
+    }
+
+    const currentSlots = attachers.map((a) => ({ x: a.x as number, y: a.y as number }));
+    const minSlotGap = currentSlots.slice(1).reduce((min, slot, i) => {
+      return Math.min(min, Math.abs(slot.x - currentSlots[i].x));
+    }, Infinity);
+
+    const targetSlots =
+      minSlotGap >= 40
+        ? currentSlots
+        : attachers.map((att, idx) => {
+            const w = att.width as number;
+            const h = att.height as number;
+            const cx =
+              (host.x as number) +
+              20 +
+              (idx * Math.max(44, (host.width as number) - 40)) / (attachers.length - 1);
+            return {
+              x: Math.round(cx - w / 2),
+              y: Math.round((host.y as number) + (host.height as number) - h / 2),
+            };
+          });
+
+    isReorderingRef.current = true;
+    try {
+      reordered.forEach((att, idx) => {
+        const liveAtt = registry.get(att.id);
+        const liveHost = registry.get(host.id);
+        if (!liveAtt || !liveHost || typeof liveAtt.x !== 'number' || typeof liveAtt.y !== 'number') {
+          return;
+        }
+        const dx = Math.round(targetSlots[idx].x - liveAtt.x);
+        const dy = Math.round(targetSlots[idx].y - liveAtt.y);
+        if (dx !== 0 || dy !== 0) {
+          modeling.moveElements([liveAtt], { x: dx, y: dy }, liveHost, { attach: true });
+        }
+      });
+
+      const refreshedHost = registry.get(host.id);
+      for (const att of refreshedHost?.attachers || []) {
+        if (att.type !== 'bpmn:BoundaryEvent') continue;
+        for (const conn of att.outgoing || []) {
+          modeling.layoutConnection(conn);
+        }
+      }
+
+      setBoundaryContext(computeBoundaryContext(selection.get() || []));
+      onNotify('Orden de eventos adjuntos actualizado y flujos adaptados.');
+    } catch {
+      onNotify('No se pudo reordenar los eventos adjuntos automáticamente.');
+    } finally {
+      isReorderingRef.current = false;
+    }
+  };
+
   const handleCopyXml = async () => {
     if (!currentXml) return;
     try {
@@ -404,29 +798,31 @@ export default function BpmnEditor({
     <section className="canvas-panel" aria-label="Editor BPMN 2.0">
       <div className="editor-toolbar">
         <div className="toolbar-group">
-          <button type="button" className="tool-btn" onClick={() => handleZoom(-0.2)} disabled={!hasDiagram} title="Alejar">
+          <button type="button" className="tool-btn" onClick={() => handleZoom(-0.2)} disabled={!hasDiagram} title="Alejar" aria-label="Alejar">
             <ZoomOutIcon />
           </button>
-          <span className="zoom-label mono">{hasDiagram ? `${zoomPct}%` : '—'}</span>
-          <button type="button" className="tool-btn" onClick={() => handleZoom(0.2)} disabled={!hasDiagram} title="Acercar">
+          <button type="button" className="zoom-label mono" onClick={handleFit} disabled={!hasDiagram} title="Ajustar al lienzo">
+            {hasDiagram ? `${zoomPct}%` : '—'}
+          </button>
+          <button type="button" className="tool-btn" onClick={() => handleZoom(0.2)} disabled={!hasDiagram} title="Acercar" aria-label="Acercar">
             <ZoomInIcon />
           </button>
           <button type="button" className="tool-btn" onClick={handleFit} disabled={!hasDiagram} title="Centrar diagrama">
             <FitIcon />
-            <span>Centrar</span>
+            <span className="tool-label-desktop">Centrar</span>
           </button>
           <span className="toolbar-divider" />
-          <button type="button" className="tool-btn" onClick={handleUndo} disabled={!canUndo} title="Deshacer">
+          <button type="button" className="tool-btn" onClick={handleUndo} disabled={!canUndo} title="Deshacer (Ctrl+Z)">
             <UndoIcon />
-            <span>Deshacer</span>
+            <span className="tool-label-desktop">Deshacer</span>
           </button>
-          <button type="button" className="tool-btn" onClick={handleRedo} disabled={!canRedo} title="Rehacer">
+          <button type="button" className="tool-btn" onClick={handleRedo} disabled={!canRedo} title="Rehacer (Ctrl+Y)">
             <RedoIcon />
-            <span>Rehacer</span>
+            <span className="tool-label-desktop">Rehacer</span>
           </button>
         </div>
 
-        <div className="toolbar-group">
+        <div className="toolbar-group" data-tour="export-toolbar">
           <input
             ref={fileInputRef}
             type="file"
@@ -442,44 +838,53 @@ export default function BpmnEditor({
             title="Importar archivo BPMN 2.0 local"
           >
             <UploadIcon />
-            <span>Importar .bpmn</span>
+            <span className="tool-label-desktop">Importar</span>
           </button>
           <button
             type="button"
-            className="tool-btn"
+            className={`tool-btn ${xmlOpen ? 'active' : ''}`}
             onClick={() => void handleToggleXml()}
             disabled={!hasDiagram}
             aria-expanded={xmlOpen}
+            title="Inspeccionar XML BPMN 2.0"
           >
             <CodeIcon />
-            <span>{xmlOpen ? 'Ocultar XML' : 'Ver XML'}</span>
+            <span>{xmlOpen ? 'Ocultar XML' : 'XML'}</span>
           </button>
-          <button type="button" className="tool-btn" onClick={handleDownloadBpmn} disabled={!hasDiagram}>
+          <button type="button" className="tool-btn" onClick={handleDownloadBpmn} disabled={!hasDiagram} title="Descargar archivo .bpmn estándar">
             <DownloadIcon />
             <span>.bpmn</span>
           </button>
-          <button type="button" className="tool-btn" onClick={handleDownloadSvg} disabled={!hasDiagram}>
+          <button type="button" className="tool-btn" onClick={handleDownloadSvg} disabled={!hasDiagram} title="Descargar diagrama vectorial .svg">
             <DownloadIcon />
             <span>.svg</span>
           </button>
         </div>
       </div>
 
-      <div className={`editor-stage ${!hasDiagram ? 'is-empty' : ''}`}>
+      <div className={`editor-stage ${!hasDiagram ? 'is-empty' : ''}`} data-tour="bpmn-canvas">
         <div ref={containerRef} className="bpmn-container" tabIndex={0} />
 
         {!hasDiagram && !importError && !loading && (
           <div className="empty-state">
             <div className="empty-card">
+              <div className="empty-icon">
+                <BrandIcon />
+              </div>
               <h2>Tu diagrama BPMN 2.0 aparecerá aquí</h2>
               <p>
                 Describí un proceso en el panel izquierdo, elegí un ejemplo precargado o iniciá un
                 lienzo en blanco para modelar manualmente con la paleta BPMN.
               </p>
               <div className="empty-actions">
+                {onFocusDescription && (
+                  <button type="button" className="tool-btn" onClick={onFocusDescription}>
+                    <span>Escribir descripción</span>
+                  </button>
+                )}
                 <button type="button" className="tool-btn" onClick={onCreateBlank}>
                   <PlusIcon />
-                  <span>Crear diagrama en blanco</span>
+                  <span>Crear en blanco</span>
                 </button>
               </div>
             </div>
@@ -507,6 +912,85 @@ export default function BpmnEditor({
               </div>
               <p className="loading-phase">{phase.label}</p>
             </div>
+          </div>
+        )}
+
+        {hasDiagram && !loading && !importError && boundaryContext && (
+          <div
+            className={`boundary-reorder-bar ${
+              boundaryContext.anchorPos
+                ? `is-anchored ${boundaryContext.anchorPos.placement}`
+                : ''
+            }`}
+            style={
+              boundaryContext.anchorPos
+                ? {
+                    left: `${Math.round(boundaryContext.anchorPos.left)}px`,
+                    top: `${Math.round(boundaryContext.anchorPos.top)}px`,
+                  }
+                : undefined
+            }
+            role="region"
+            aria-label="Reordenar eventos adjuntos"
+          >
+            <span className="boundary-reorder-label">
+              {boundaryContext.selectedBoundaryId
+                ? `Evento adjunto (${boundaryContext.index + 1}/${boundaryContext.count})`
+                : `${boundaryContext.count} eventos adjuntos`}
+            </span>
+            <div className="boundary-reorder-actions">
+              {boundaryContext.selectedBoundaryId ? (
+                <>
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    disabled={!boundaryContext.canMoveLeft}
+                    onClick={() => handleReorderBoundary('left')}
+                    title="Mover evento una posición a la izquierda y adaptar flujos"
+                  >
+                    <ChevronLeftIcon />
+                    <span>Mover izq.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    disabled={!boundaryContext.canMoveRight}
+                    onClick={() => handleReorderBoundary('right')}
+                    title="Mover evento una posición a la derecha y adaptar flujos"
+                  >
+                    <span>Mover der.</span>
+                    <ChevronRightIcon />
+                  </button>
+                  {boundaryContext.count === 2 && (
+                    <button
+                      type="button"
+                      className="tool-btn"
+                      onClick={() => handleReorderBoundary('swap')}
+                      title="Intercambiar orden con el evento adjunto par y adaptar flujos"
+                    >
+                      <SwapIcon />
+                      <span>Intercambiar</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => handleReorderBoundary('swap')}
+                  title="Reordenar eventos adjuntos de esta tarea y adaptar sus flujos"
+                >
+                  <SwapIcon />
+                  <span>{boundaryContext.count === 2 ? 'Intercambiar orden' : 'Rotar orden'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hasDiagram && !loading && !importError && !boundaryContext && multiSelectCount >= 2 && (
+          <div className="multi-select-pill" role="status" aria-live="polite">
+            {multiSelectCount} elementos seleccionados · Arrastrá para mover en conjunto
           </div>
         )}
       </div>

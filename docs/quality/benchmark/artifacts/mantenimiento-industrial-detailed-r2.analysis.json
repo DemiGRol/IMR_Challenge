@@ -1,0 +1,53 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si la prueba operativa realizada por Calidad falla?",
+      "assumption": "Se asumió que la prueba operativa resulta exitosa y permite continuar directamente hacia la habilitación de la máquina y cierre de la orden.",
+      "impact": "high",
+      "elementIds": [
+        "Task_PruebaOperativa",
+        "Task_HabilitarCerrar"
+      ],
+      "sourceExcerpt": "Calidad realiza una prueba operativa antes de habilitar la máquina y cerrar la orden"
+    },
+    {
+      "question": "¿La confirmación del proveedor dentro de las 72 horas implica la disponibilidad inmediata de los repuestos o existe una etapa posterior de recepción?",
+      "assumption": "Se asumió que tras recibir la confirmación del proveedor los repuestos quedan disponibles para continuar con la reparación.",
+      "impact": "high",
+      "elementIds": [
+        "Catch_Confirmacion",
+        "Gw_StockJoin",
+        "Task_EjecutarReparacion"
+      ],
+      "sourceExcerpt": "espera su confirmación hasta un máximo de 72 horas"
+    },
+    {
+      "question": "¿Qué sucede con la orden de mantenimiento y la inspección en curso si se supera el plazo de 72 horas y se reprograma la producción?",
+      "assumption": "Se asumió que el escalamiento y la reprogramación de la producción finalizan esa rama de forma independiente sin detallar cómo se suspende o reanuda la reparación.",
+      "impact": "high",
+      "elementIds": [
+        "End_Reprogramada",
+        "Gw_ParallelJoin"
+      ],
+      "sourceExcerpt": "se escala la demora a Gerencia de Planta y se reprograma la producción"
+    },
+    {
+      "question": "¿Qué área es responsable de habilitar la máquina y cerrar formalmente la orden de trabajo?",
+      "assumption": "Se asignó la tarea de habilitar la máquina y cerrar la orden al carril de Mantenimiento luego de la prueba de Calidad.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_HabilitarCerrar"
+      ],
+      "sourceExcerpt": "antes de habilitar la máquina y cerrar la orden"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Evento de escalamiento fuera de un subproceso",
+      "explanation": "En BPMN 2.0, un evento intermedio de escalamiento (escalationEventDefinition) está pensado para propagarse hacia un subproceso padre que lo capture. Al modelarlo en el proceso principal sin subproceso contenedor, se recomienda usar una tarea de envío o notificación interna hacia Gerencia de Planta; se conservó el evento de escalamiento para reflejar fielmente lo descrito.",
+      "elementIds": [
+        "Throw_EscalarDemora"
+      ]
+    }
+  ]
+}

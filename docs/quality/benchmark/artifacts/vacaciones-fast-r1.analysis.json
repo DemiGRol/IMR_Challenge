@@ -1,0 +1,24 @@
+{
+  "assumptions": [
+    {
+      "question": "¿El portal valida automáticamente si el empleado tiene saldo suficiente antes de enviar la solicitud al responsable?",
+      "assumption": "Se asumió que no hay validación previa automática y que el descuento de saldo ocurre únicamente tras la aprobación.",
+      "impact": "high",
+      "elementIds": [
+        "Task_Registrar",
+        "Task_Descontar"
+      ],
+      "sourceExcerpt": "RRHH descuenta los días del saldo disponible"
+    },
+    {
+      "question": "¿Existe un plazo máximo para que el responsable del área revise la solicitud antes de escalar o vencer?",
+      "assumption": "Se modeló la revisión sin límite de tiempo ni evento de vencimiento.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_Revisar"
+      ],
+      "sourceExcerpt": "El responsable del área revisa la disponibilidad del equipo"
+    }
+  ],
+  "recommendations": []
+}

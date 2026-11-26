@@ -1,3 +1,6 @@
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
 export interface TokenUsage {
   promptTokens?: number;
   outputTokens?: number;
@@ -17,6 +20,7 @@ export interface GenerationTelemetryEvent {
   event: 'bpmn_generation';
   timestamp: string;
   requestId: string;
+  operation?: 'generate' | 'analyze';
   outcome: 'success' | 'error';
   httpStatus: number;
   errorCode: string | null;
@@ -93,15 +97,68 @@ export function estimateCostUsd(
   return Number(usd.toFixed(6));
 }
 
+const MAX_BUFFER = 200;
+const liveBuffer: GenerationTelemetryEvent[] = [];
+const LIVE_TELEMETRY_FILE = path.join(process.cwd(), 'docs', 'quality', 'telemetry', 'live-events.jsonl');
+
 export function logGenerationTelemetry(
-  payload: Omit<GenerationTelemetryEvent, 'event' | 'timestamp' | 'estimatedCostUsd'>
+  payload: Omit<GenerationTelemetryEvent, 'event' | 'timestamp' | 'estimatedCostUsd'>,
+  options?: { skipPersist?: boolean }
 ): void {
   const effectiveLocation = payload.location ?? (process.env.GCP_LOCATION || 'global');
   const record: GenerationTelemetryEvent = {
     event: 'bpmn_generation',
+    operation: payload.operation ?? 'generate',
     timestamp: new Date().toISOString(),
     ...payload,
     estimatedCostUsd: estimateCostUsd(payload.usage, payload.model, effectiveLocation),
   };
+
+  liveBuffer.push(record);
+  if (liveBuffer.length > MAX_BUFFER) {
+    liveBuffer.shift();
+  }
+
+  if (!options?.skipPersist && process.env.VERCEL !== '1' && !process.env.NODE_TEST_CONTEXT) {
+    try {
+      mkdirSync(path.dirname(LIVE_TELEMETRY_FILE), { recursive: true });
+      appendFileSync(LIVE_TELEMETRY_FILE, JSON.stringify(record) + '\n', 'utf8');
+    } catch {
+      // No interrumpir la petición si el entorno es de solo lectura
+    }
+  }
+
   console.info(JSON.stringify(record));
+}
+
+export function getLiveTelemetryEvents(limit = 200): GenerationTelemetryEvent[] {
+  const byRequestId = new Map<string, GenerationTelemetryEvent>();
+
+  if (existsSync(LIVE_TELEMETRY_FILE)) {
+    try {
+      const raw = readFileSync(LIVE_TELEMETRY_FILE, 'utf8');
+      for (const line of raw.split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as GenerationTelemetryEvent;
+          if (parsed.requestId) {
+            byRequestId.set(parsed.requestId, parsed);
+          }
+        } catch {
+          // Ignorar líneas truncadas
+        }
+      }
+    } catch {
+      // Ignorar errores de lectura en disco
+    }
+  }
+
+  for (const item of liveBuffer) {
+    byRequestId.set(item.requestId, item);
+  }
+
+  const all = Array.from(byRequestId.values()).sort((a, b) =>
+    a.timestamp.localeCompare(b.timestamp)
+  );
+  return all.slice(-Math.max(1, limit));
 }

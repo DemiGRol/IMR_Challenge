@@ -1,0 +1,49 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Quién recibe el recordatorio automático cuando transcurren 24 horas sin resolución en el ERP?",
+      "assumption": "Se modeló como una tarea de servicio interna dentro de Finanzas asumiendo que el recordatorio se envía al analista asignado.",
+      "impact": "medium",
+      "elementIds": [
+        "Boundary_24h",
+        "Task_Recordatorio"
+      ],
+      "sourceExcerpt": "si transcurren 24 horas sin resolución, se envía automáticamente un recordatorio"
+    },
+    {
+      "question": "¿Qué ocurre si el analista de Finanzas rechaza la compra durante la revisión en el portal ERP?",
+      "assumption": "Se asumió que la revisión en el ERP concluye con la aprobación para continuar hacia la emisión de la orden de compra.",
+      "impact": "high",
+      "elementIds": [
+        "Task_AprobarERP"
+      ],
+      "sourceExcerpt": "un analista de Finanzas revisa y aprueba la compra en el portal ERP"
+    },
+    {
+      "question": "¿El solicitante de la compra es un actor externo o un área interna no detallada?",
+      "assumption": "Se representó al solicitante de forma implícita mediante eventos de mensaje en el inicio y cierre del proceso sin crear un Pool adicional.",
+      "impact": "low",
+      "elementIds": [
+        "StartEvent_1",
+        "End_Exito"
+      ],
+      "sourceExcerpt": "enviando una notificación de cierre exitoso al solicitante"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo por políticas presupuestarias podría ser un evento final convencional",
+      "explanation": "En BPMN 2.0, un rechazo esperado por reglas de negocio no constituye una falla técnica y suele modelarse con un evento de fin convencional. Se conservó el evento de error según lo solicitado explícitamente en la descripción.",
+      "elementIds": [
+        "End_RechazoPoliticas"
+      ]
+    },
+    {
+      "title": "El escalamiento sin subproceso padre no tiene un manejador directo",
+      "explanation": "El evento intermedio de escalamiento (escalationEventDefinition) está pensado para ser capturado por un evento de borde en un subproceso padre. Se mantuvo el elemento solicitado en el flujo principal para respetar la descripción.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "assumptions": [
+    {
+      "question": "¿Qué ocurre si el analista de Finanzas rechaza la compra durante la revisión en el portal ERP?",
+      "assumption": "Se asumió que la tarea en el ERP siempre culmina en aprobación para continuar hacia Compras, sin modelar una compuerta de rechazo posterior.",
+      "impact": "high",
+      "elementIds": [
+        "Task_AprobarERP"
+      ],
+      "sourceExcerpt": "un analista de Finanzas revisa y aprueba la compra en el portal ERP."
+    },
+    {
+      "question": "¿Quién es el destinatario del recordatorio automático enviado a las 24 horas?",
+      "assumption": "Se modeló como una tarea de servicio interna dentro de Finanzas dirigida al analista responsable, sin flujo de mensaje externo.",
+      "impact": "medium",
+      "elementIds": [
+        "Boundary_24h",
+        "Task_EnviarRecordatorio"
+      ],
+      "sourceExcerpt": "se envía automáticamente un recordatorio sin cancelar la tarea de aprobación."
+    },
+    {
+      "question": "¿Existe un límite de reintentos o condición de salida si los datos contables nunca quedan consistentes en el bucle?",
+      "assumption": "Se asumió un bucle estándar sin límite máximo explícito hasta lograr consistencia contable.",
+      "impact": "medium",
+      "elementIds": [
+        "Task_EvaluarPoliticas"
+      ],
+      "sourceExcerpt": "repitiendo la verificación en bucle hasta que los datos contables queden consistentes."
+    },
+    {
+      "question": "¿A quién se dirige la alerta de escalamiento tras las 48 horas y se notifica al proveedor la cancelación?",
+      "assumption": "Se modeló la alerta como evento de escalamiento interno y el cierre directo de la orden sin notificar al proveedor.",
+      "impact": "high",
+      "elementIds": [
+        "Throw_Escalamiento",
+        "End_OrdenCancelada"
+      ],
+      "sourceExcerpt": "Compras emite una alerta de escalamiento y cancela la orden con un evento de error."
+    },
+    {
+      "question": "¿Qué reglas exactas determinan el tipo de compra para activar la inspección de bultos o el registro de facturas?",
+      "assumption": "Se dejaron las condiciones de la compuerta inclusiva a nivel descriptivo según la necesidad de inspección o registro.",
+      "impact": "medium",
+      "elementIds": [
+        "Gw_AccionesSplit"
+      ],
+      "sourceExcerpt": "pueden activarse una o más acciones según el tipo de compra"
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "El rechazo presupuestario podría ser un evento final convencional",
+      "explanation": "En BPMN 2.0, un rechazo esperado por reglas de negocio (como no cumplir políticas presupuestarias) no constituye una falla técnica y suele modelarse con un endEvent convencional o de mensaje. Se conservó el errorEventDefinition solicitado explícitamente en la descripción.",
+      "elementIds": [
+        "End_RechazoPolitica"
+      ]
+    },
+    {
+      "title": "El escalamiento sin subproceso padre carece de manejador en BPMN 2.0",
+      "explanation": "El evento escalationEventDefinition está diseñado para escalar desde un subproceso hijo hacia un boundaryEvent en el proceso padre. En un proceso plano, suele ser más claro usar una tarea de servicio o envío para notificar la demora. Se conservó el evento de escalamiento solicitado en la descripción.",
+      "elementIds": [
+        "Throw_Escalamiento"
+      ]
+    },
+    {
+      "title": "La cancelación de orden por vencimiento podría ser un evento final convencional",
+      "explanation": "Al igual que el rechazo presupuestario, cancelar una orden porque el proveedor no respondió en 48 horas es un desenlace de negocio y no un error técnico de ejecución. Se conservó el errorEventDefinition según lo indicado en el texto.",
+      "elementIds": [
+        "End_OrdenCancelada"
+      ]
+    }
+  ]
+}

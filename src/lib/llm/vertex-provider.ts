@@ -1,7 +1,14 @@
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { z } from 'zod';
-import { BPMN_SYSTEM_INSTRUCTION } from './prompt';
-import { GenerateBpmnInput, LlmProvider, LlmRawBpmnOutput, LlmServiceError } from './types';
+import { BPMN_ANALYZE_INSTRUCTION, BPMN_SYSTEM_INSTRUCTION } from './prompt';
+import {
+  AnalyzeBpmnInput,
+  GenerateBpmnInput,
+  LlmProvider,
+  LlmRawAnalyzeOutput,
+  LlmRawBpmnOutput,
+  LlmServiceError,
+} from './types';
 
 const AssumptionSchema = z.object({
   question: z.string().min(3),
@@ -19,6 +26,11 @@ const RecommendationSchema = z.object({
 
 const LlmOutputSchema = z.object({
   bpmnXml: z.string().min(20),
+  assumptions: z.array(AssumptionSchema).default([]),
+  recommendations: z.array(RecommendationSchema).default([]),
+});
+
+const AnalyzeOutputSchema = z.object({
   assumptions: z.array(AssumptionSchema).default([]),
   recommendations: z.array(RecommendationSchema).default([]),
 });
@@ -111,6 +123,10 @@ function classifySdkError(err: unknown): LlmServiceError {
 let cachedClient: GoogleGenAI | null = null;
 let cachedConfigKey = '';
 
+function escapeDelimiter(value: string, tag: string): string {
+  return value.replace(new RegExp(`<\\s*/\\s*${tag}\\s*>`, 'gi'), `&lt;/${tag}&gt;`);
+}
+
 export class VertexAiProvider implements LlmProvider {
   readonly name = 'vertex-ai';
   readonly model: string;
@@ -147,9 +163,13 @@ export class VertexAiProvider implements LlmProvider {
   }
 
   async generate(input: GenerateBpmnInput, signal: AbortSignal): Promise<LlmRawBpmnOutput> {
-    const previousSemantic = input.previousBpmnXml?.trim() || '';
+    const safeDesc = escapeDelimiter(input.processDescription, 'process_description');
+    const previousSemantic = escapeDelimiter(
+      input.previousBpmnXml?.trim() || '',
+      'previous_bpmn_xml'
+    );
 
-    let userContent = `<process_description>\n${input.processDescription}\n</process_description>`;
+    let userContent = `<process_description>\n${safeDesc}\n</process_description>`;
     if (previousSemantic) {
       userContent += `\n\n<previous_bpmn_xml>\n${previousSemantic}\n</previous_bpmn_xml>\nConservá los elementos y ediciones manuales presentes en <previous_bpmn_xml> salvo que contradigan <process_description>, aplicando solo los cambios solicitados.`;
     }
@@ -270,6 +290,137 @@ export class VertexAiProvider implements LlmProvider {
         'SCHEMA_MISMATCH',
         true
       );
+    }
+
+    const usageMeta = response.usageMetadata as
+      | {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+          thoughtsTokenCount?: number;
+          totalTokenCount?: number;
+        }
+      | undefined;
+
+    return {
+      ...validated.data,
+      finishReason: finishReason ? String(finishReason) : undefined,
+      usage: usageMeta
+        ? {
+            promptTokens: usageMeta.promptTokenCount,
+            outputTokens: usageMeta.candidatesTokenCount,
+            thinkingTokens: usageMeta.thoughtsTokenCount,
+            totalTokens: usageMeta.totalTokenCount,
+          }
+        : undefined,
+    };
+  }
+
+  async analyze(input: AnalyzeBpmnInput, signal: AbortSignal): Promise<LlmRawAnalyzeOutput> {
+    const safeXml = escapeDelimiter(input.currentBpmnXml.trim(), 'current_bpmn_xml');
+    let userContent = `<current_bpmn_xml>\n${safeXml}\n</current_bpmn_xml>`;
+    if (input.processDescription?.trim()) {
+      const safeDesc = escapeDelimiter(input.processDescription.trim(), 'process_description');
+      userContent += `\n\n<process_description>\n${safeDesc}\n</process_description>`;
+    }
+    if (input.resolvedQuestions && input.resolvedQuestions.length > 0) {
+      const listText = input.resolvedQuestions
+        .map((q) => `- ${escapeDelimiter(q, 'resolved_questions')}`)
+        .join('\n');
+      userContent += `\n\n<resolved_questions>\n${listText}\n</resolved_questions>`;
+    }
+
+    let response;
+    try {
+      response = await this.client.models.generateContent({
+        model: this.model,
+        contents: userContent,
+        config: {
+          systemInstruction: BPMN_ANALYZE_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              assumptions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    question: { type: Type.STRING },
+                    assumption: { type: Type.STRING },
+                    impact: { type: Type.STRING, enum: ['high', 'medium', 'low'] },
+                    elementIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    sourceExcerpt: { type: Type.STRING },
+                  },
+                  required: ['question', 'assumption', 'impact', 'elementIds', 'sourceExcerpt'],
+                },
+              },
+              recommendations: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    explanation: { type: Type.STRING },
+                    elementIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  },
+                  required: ['title', 'explanation', 'elementIds'],
+                },
+              },
+            },
+            required: ['assumptions', 'recommendations'],
+          },
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+          thinkingConfig: {
+            thinkingLevel: input.mode === 'fast' ? ThinkingLevel.LOW : ThinkingLevel.MEDIUM,
+          },
+          abortSignal: signal,
+        },
+      });
+    } catch (err) {
+      const classified = classifySdkError(err);
+      console.error('[VertexAiProvider] analyze SDK error', {
+        model: this.model,
+        code: classified.code,
+        statusCode: classified.statusCode,
+      });
+      throw classified;
+    }
+
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      throw new LlmServiceError(
+        'El análisis superó el límite de respuesta del modelo. Intentá nuevamente en modo rápido.',
+        502,
+        'MAX_TOKENS',
+        false
+      );
+    }
+    if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
+      throw new LlmServiceError(
+        'El análisis no pudo procesarse por políticas de seguridad del modelo.',
+        400,
+        'SAFETY_BLOCK',
+        false
+      );
+    }
+
+    const text = response.text?.trim();
+    if (!text) {
+      throw new LlmServiceError('El modelo devolvió una respuesta vacía al analizar.', 502, 'EMPTY_RESPONSE', true);
+    }
+
+    const cleaned = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(cleaned);
+    } catch {
+      throw new LlmServiceError('La respuesta del análisis no tuvo formato JSON válido.', 502, 'INVALID_JSON', true);
+    }
+
+    const validated = AnalyzeOutputSchema.safeParse(parsedJson);
+    if (!validated.success) {
+      throw new LlmServiceError('La respuesta del análisis no cumplió el contrato esperado.', 502, 'SCHEMA_MISMATCH', true);
     }
 
     const usageMeta = response.usageMetadata as

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"><bpmn:collaboration id="Collaboration_1"><bpmn:participant id="Participant_Empresa" name="Empresa" processRef="Process_1" /></bpmn:collaboration><bpmn:process id="Process_1" isExecutable="false"><bpmn:laneSet id="LaneSet_1"><bpmn:lane id="Lane_Empleado" name="Empleado"><bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Registrar</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Responsable" name="Responsable del área"><bpmn:flowNodeRef>Task_Revisar</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_Aprobacion</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_NotificarRechazo</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Rechazada</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_RRHH" name="RRHH"><bpmn:flowNodeRef>Task_Descontar</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Confirmar</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Aprobada</bpmn:flowNodeRef></bpmn:lane></bpmn:laneSet><bpmn:startEvent id="StartEvent_1" name="Inicio de solicitud"><bpmn:outgoing>Flow_1</bpmn:outgoing></bpmn:startEvent><bpmn:userTask id="Task_Registrar" name="Registrar solicitud de vacaciones"><bpmn:incoming>Flow_1</bpmn:incoming><bpmn:outgoing>Flow_2</bpmn:outgoing></bpmn:userTask><bpmn:task id="Task_Revisar" name="Revisar disponibilidad del equipo"><bpmn:incoming>Flow_2</bpmn:incoming><bpmn:outgoing>Flow_3</bpmn:outgoing></bpmn:task><bpmn:exclusiveGateway id="Gw_Aprobacion" name="¿Solicitud aprobada?"><bpmn:incoming>Flow_3</bpmn:incoming><bpmn:outgoing>Flow_Si</bpmn:outgoing><bpmn:outgoing>Flow_No</bpmn:outgoing></bpmn:exclusiveGateway><bpmn:task id="Task_Descontar" name="Descontar días del saldo"><bpmn:incoming>Flow_Si</bpmn:incoming><bpmn:outgoing>Flow_4</bpmn:outgoing></bpmn:task><bpmn:serviceTask id="Task_Confirmar" name="Enviar confirmación al empleado"><bpmn:incoming>Flow_4</bpmn:incoming><bpmn:outgoing>Flow_5</bpmn:outgoing></bpmn:serviceTask><bpmn:endEvent id="End_Aprobada" name="Solicitud aprobada"><bpmn:incoming>Flow_5</bpmn:incoming></bpmn:endEvent><bpmn:task id="Task_NotificarRechazo" name="Enviar aviso de rechazo"><bpmn:incoming>Flow_No</bpmn:incoming><bpmn:outgoing>Flow_6</bpmn:outgoing></bpmn:task><bpmn:endEvent id="End_Rechazada" name="Solicitud rechazada"><bpmn:incoming>Flow_6</bpmn:incoming></bpmn:endEvent><bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Registrar" /><bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Registrar" targetRef="Task_Revisar" /><bpmn:sequenceFlow id="Flow_3" sourceRef="Task_Revisar" targetRef="Gw_Aprobacion" /><bpmn:sequenceFlow id="Flow_Si" name="Sí" sourceRef="Gw_Aprobacion" targetRef="Task_Descontar" /><bpmn:sequenceFlow id="Flow_No" name="No" sourceRef="Gw_Aprobacion" targetRef="Task_NotificarRechazo" /><bpmn:sequenceFlow id="Flow_4" sourceRef="Task_Descontar" targetRef="Task_Confirmar" /><bpmn:sequenceFlow id="Flow_5" sourceRef="Task_Confirmar" targetRef="End_Aprobada" /><bpmn:sequenceFlow id="Flow_6" sourceRef="Task_NotificarRechazo" targetRef="End_Rechazada" /></bpmn:process>  <bpmndi:BPMNDiagram id="BPMNDiagram_Collab">
+    <bpmndi:BPMNPlane id="BPMNPlane_Collab" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Empresa_di" bpmnElement="Participant_Empresa" isHorizontal="true">
+        <omgdc:Bounds x="120" y="80" width="1311" height="444" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Empleado_di" bpmnElement="Lane_Empleado" isHorizontal="true">
+        <omgdc:Bounds x="150" y="80" width="1281" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <omgdc:Bounds x="260" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Registrar_di" bpmnElement="Task_Registrar">
+        <omgdc:Bounds x="393" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Responsable_di" bpmnElement="Lane_Responsable" isHorizontal="true">
+        <omgdc:Bounds x="150" y="228" width="1281" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Revisar_di" bpmnElement="Task_Revisar">
+        <omgdc:Bounds x="558" y="262" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Aprobacion_di" bpmnElement="Gw_Aprobacion" isMarkerVisible="true">
+        <omgdc:Bounds x="748" y="277" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotificarRechazo_di" bpmnElement="Task_NotificarRechazo">
+        <omgdc:Bounds x="888" y="262" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Rechazada_di" bpmnElement="End_Rechazada">
+        <omgdc:Bounds x="1085" y="284" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_RRHH_di" bpmnElement="Lane_RRHH" isHorizontal="true">
+        <omgdc:Bounds x="150" y="376" width="1281" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Descontar_di" bpmnElement="Task_Descontar">
+        <omgdc:Bounds x="888" y="410" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Confirmar_di" bpmnElement="Task_Confirmar">
+        <omgdc:Bounds x="1053" y="410" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Aprobada_di" bpmnElement="End_Aprobada">
+        <omgdc:Bounds x="1250" y="432" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <omgdi:waypoint x="296" y="154" />
+        <omgdi:waypoint x="393" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <omgdi:waypoint x="493" y="154" />
+        <omgdi:waypoint x="517" y="154" />
+        <omgdi:waypoint x="517" y="302" />
+        <omgdi:waypoint x="558" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <omgdi:waypoint x="658" y="302" />
+        <omgdi:waypoint x="748" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Si_di" bpmnElement="Flow_Si">
+        <omgdi:waypoint x="773" y="327" />
+        <omgdi:waypoint x="773" y="450" />
+        <omgdi:waypoint x="888" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_No_di" bpmnElement="Flow_No">
+        <omgdi:waypoint x="798" y="302" />
+        <omgdi:waypoint x="888" y="302" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <omgdi:waypoint x="988" y="450" />
+        <omgdi:waypoint x="1053" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <omgdi:waypoint x="1153" y="450" />
+        <omgdi:waypoint x="1250" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <omgdi:waypoint x="988" y="302" />
+        <omgdi:waypoint x="1085" y="302" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"><bpmn:collaboration id="Collaboration_1"><bpmn:participant id="Participant_Empresa" name="Empresa" processRef="Process_1" /><bpmn:participant id="Participant_Proveedor" name="Proveedor" /><bpmn:messageFlow id="MsgFlow_Orden" name="Orden de compra" sourceRef="Task_EnviarOrden" targetRef="Participant_Proveedor" /><bpmn:messageFlow id="MsgFlow_Confirmacion" name="Confirmación" sourceRef="Participant_Proveedor" targetRef="Catch_Confirmacion" /></bpmn:collaboration><bpmn:process id="Process_1" isExecutable="false"><bpmn:laneSet id="LaneSet_1"><bpmn:lane id="Lane_Compras" name="Compras"><bpmn:flowNodeRef>StartEvent_1</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_EnviarOrden</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_EsperaProveedor</bpmn:flowNodeRef><bpmn:flowNodeRef>Catch_Confirmacion</bpmn:flowNodeRef><bpmn:flowNodeRef>Catch_Timeout48h</bpmn:flowNodeRef><bpmn:flowNodeRef>Throw_Escalamiento</bpmn:flowNodeRef><bpmn:flowNodeRef>End_OrdenCancelada</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Exitoso</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Finanzas" name="Finanzas"><bpmn:flowNodeRef>Task_EvaluarPoliticas</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_Politicas</bpmn:flowNodeRef><bpmn:flowNodeRef>End_RechazoPoliticas</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_AprobarERP</bpmn:flowNodeRef><bpmn:flowNodeRef>Boundary_24h</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_EnviarRecordatorio</bpmn:flowNodeRef><bpmn:flowNodeRef>End_Recordatorio</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Transferencia</bpmn:flowNodeRef><bpmn:flowNodeRef>Boundary_ErrorPago</bpmn:flowNodeRef><bpmn:flowNodeRef>End_ErrorPago</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_AccionesSplit</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_RegistrarFacturas</bpmn:flowNodeRef><bpmn:flowNodeRef>Task_Archivar</bpmn:flowNodeRef><bpmn:flowNodeRef>Gw_AccionesJoin</bpmn:flowNodeRef></bpmn:lane><bpmn:lane id="Lane_Logistica" name="Logística"><bpmn:flowNodeRef>Task_Inspeccionar</bpmn:flowNodeRef></bpmn:lane></bpmn:laneSet><bpmn:startEvent id="StartEvent_1" name="Solicitud de compra recibida"><bpmn:outgoing>Flow_1</bpmn:outgoing><bpmn:messageEventDefinition id="MsgDef_Start" /></bpmn:startEvent><bpmn:businessRuleTask id="Task_EvaluarPoliticas" name="Evaluar políticas presupuestarias"><bpmn:incoming>Flow_1</bpmn:incoming><bpmn:outgoing>Flow_2</bpmn:outgoing><bpmn:standardLoopCharacteristics /></bpmn:businessRuleTask><bpmn:exclusiveGateway id="Gw_Politicas" name="¿Cumple políticas presupuestarias?" default="Flow_Cumple"><bpmn:incoming>Flow_2</bpmn:incoming><bpmn:outgoing>Flow_NoCumple</bpmn:outgoing><bpmn:outgoing>Flow_Cumple</bpmn:outgoing></bpmn:exclusiveGateway><bpmn:endEvent id="End_RechazoPoliticas" name="Solicitud rechazada"><bpmn:incoming>Flow_NoCumple</bpmn:incoming><bpmn:errorEventDefinition id="ErrDef_Politicas" /></bpmn:endEvent><bpmn:userTask id="Task_AprobarERP" name="Aprobar compra en ERP"><bpmn:incoming>Flow_Cumple</bpmn:incoming><bpmn:outgoing>Flow_Aprobada</bpmn:outgoing></bpmn:userTask><bpmn:boundaryEvent id="Boundary_24h" name="24 horas sin resolución" attachedToRef="Task_AprobarERP" cancelActivity="false"><bpmn:outgoing>Flow_Recordatorio</bpmn:outgoing><bpmn:timerEventDefinition id="TimerDef_24h" /></bpmn:boundaryEvent><bpmn:serviceTask id="Task_EnviarRecordatorio" name="Enviar recordatorio automático"><bpmn:incoming>Flow_Recordatorio</bpmn:incoming><bpmn:outgoing>Flow_FinRecordatorio</bpmn:outgoing></bpmn:serviceTask><bpmn:endEvent id="End_Recordatorio" name="Recordatorio enviado"><bpmn:incoming>Flow_FinRecordatorio</bpmn:incoming></bpmn:endEvent><bpmn:sendTask id="Task_EnviarOrden" name="Enviar orden de compra"><bpmn:incoming>Flow_Aprobada</bpmn:incoming><bpmn:outgoing>Flow_Espera</bpmn:outgoing></bpmn:sendTask><bpmn:eventBasedGateway id="Gw_EsperaProveedor" name="Esperar respuesta"><bpmn:incoming>Flow_Espera</bpmn:incoming><bpmn:outgoing>Flow_WaitConfirm</bpmn:outgoing><bpmn:outgoing>Flow_WaitTimeout</bpmn:outgoing></bpmn:eventBasedGateway><bpmn:intermediateCatchEvent id="Catch_Confirmacion" name="Confirmación recibida"><bpmn:incoming>Flow_WaitConfirm</bpmn:incoming><bpmn:outgoing>Flow_Pagar</bpmn:outgoing><bpmn:messageEventDefinition id="MsgDef_Confirmacion" /></bpmn:intermediateCatchEvent><bpmn:intermediateCatchEvent id="Catch_Timeout48h" name="48 horas vencidas"><bpmn:incoming>Flow_WaitTimeout</bpmn:incoming><bpmn:outgoing>Flow_Escalar</bpmn:outgoing><bpmn:timerEventDefinition id="TimerDef_48h" /></bpmn:intermediateCatchEvent><bpmn:intermediateThrowEvent id="Throw_Escalamiento" name="Emitir alerta de escalamiento"><bpmn:incoming>Flow_Escalar</bpmn:incoming><bpmn:outgoing>Flow_CancelarOrden</bpmn:outgoing><bpmn:escalationEventDefinition id="EscDef_1" /></bpmn:intermediateThrowEvent><bpmn:endEvent id="End_OrdenCancelada" name="Orden cancelada"><bpmn:incoming>Flow_CancelarOrden</bpmn:incoming><bpmn:errorEventDefinition id="ErrDef_Orden" /></bpmn:endEvent><bpmn:serviceTask id="Task_Transferencia" name="Ejecutar transferencia bancaria"><bpmn:incoming>Flow_Pagar</bpmn:incoming><bpmn:outgoing>Flow_PagoOk</bpmn:outgoing></bpmn:serviceTask><bpmn:boundaryEvent id="Boundary_ErrorPago" name="Error técnico bancario" attachedToRef="Task_Transferencia" cancelActivity="true"><bpmn:outgoing>Flow_ErrorBancario</bpmn:outgoing><bpmn:errorEventDefinition id="ErrDef_Bancario" /></bpmn:boundaryEvent><bpmn:endEvent id="End_ErrorPago" name="Error de pago"><bpmn:incoming>Flow_ErrorBancario</bpmn:incoming><bpmn:errorEventDefinition id="ErrDef_Pago" /></bpmn:endEvent><bpmn:inclusiveGateway id="Gw_AccionesSplit" name="¿Qué acciones aplican?" default="Flow_Archivar"><bpmn:incoming>Flow_PagoOk</bpmn:incoming><bpmn:outgoing>Flow_Inspeccion</bpmn:outgoing><bpmn:outgoing>Flow_RegistrarFacturas</bpmn:outgoing><bpmn:outgoing>Flow_Archivar</bpmn:outgoing></bpmn:inclusiveGateway><bpmn:manualTask id="Task_Inspeccionar" name="Inspeccionar bultos recibidos"><bpmn:incoming>Flow_Inspeccion</bpmn:incoming><bpmn:outgoing>Flow_InspeccionFin</bpmn:outgoing><bpmn:multiInstanceLoopCharacteristics /></bpmn:manualTask><bpmn:scriptTask id="Task_RegistrarFacturas" name="Registrar facturas en secuencia"><bpmn:incoming>Flow_RegistrarFacturas</bpmn:incoming><bpmn:outgoing>Flow_FacturasFin</bpmn:outgoing><bpmn:multiInstanceLoopCharacteristics isSequential="true" /></bpmn:scriptTask><bpmn:task id="Task_Archivar" name="Archivar comprobante"><bpmn:incoming>Flow_Archivar</bpmn:incoming><bpmn:outgoing>Flow_ArchivarFin</bpmn:outgoing></bpmn:task><bpmn:inclusiveGateway id="Gw_AccionesJoin"><bpmn:incoming>Flow_InspeccionFin</bpmn:incoming><bpmn:incoming>Flow_FacturasFin</bpmn:incoming><bpmn:incoming>Flow_ArchivarFin</bpmn:incoming><bpmn:outgoing>Flow_Cierre</bpmn:outgoing></bpmn:inclusiveGateway><bpmn:endEvent id="End_Exitoso" name="Notificar cierre exitoso"><bpmn:incoming>Flow_Cierre</bpmn:incoming><bpmn:messageEventDefinition id="MsgDef_Cierre" /></bpmn:endEvent><bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_EvaluarPoliticas" /><bpmn:sequenceFlow id="Flow_2" sourceRef="Task_EvaluarPoliticas" targetRef="Gw_Politicas" /><bpmn:sequenceFlow id="Flow_NoCumple" name="No" sourceRef="Gw_Politicas" targetRef="End_RechazoPoliticas" /><bpmn:sequenceFlow id="Flow_Cumple" name="Sí" sourceRef="Gw_Politicas" targetRef="Task_AprobarERP" /><bpmn:sequenceFlow id="Flow_Recordatorio" sourceRef="Boundary_24h" targetRef="Task_EnviarRecordatorio" /><bpmn:sequenceFlow id="Flow_FinRecordatorio" sourceRef="Task_EnviarRecordatorio" targetRef="End_Recordatorio" /><bpmn:sequenceFlow id="Flow_Aprobada" sourceRef="Task_AprobarERP" targetRef="Task_EnviarOrden" /><bpmn:sequenceFlow id="Flow_Espera" sourceRef="Task_EnviarOrden" targetRef="Gw_EsperaProveedor" /><bpmn:sequenceFlow id="Flow_WaitConfirm" sourceRef="Gw_EsperaProveedor" targetRef="Catch_Confirmacion" /><bpmn:sequenceFlow id="Flow_WaitTimeout" sourceRef="Gw_EsperaProveedor" targetRef="Catch_Timeout48h" /><bpmn:sequenceFlow id="Flow_Escalar" sourceRef="Catch_Timeout48h" targetRef="Throw_Escalamiento" /><bpmn:sequenceFlow id="Flow_CancelarOrden" sourceRef="Throw_Escalamiento" targetRef="End_OrdenCancelada" /><bpmn:sequenceFlow id="Flow_Pagar" sourceRef="Catch_Confirmacion" targetRef="Task_Transferencia" /><bpmn:sequenceFlow id="Flow_ErrorBancario" sourceRef="Boundary_ErrorPago" targetRef="End_ErrorPago" /><bpmn:sequenceFlow id="Flow_PagoOk" sourceRef="Task_Transferencia" targetRef="Gw_AccionesSplit" /><bpmn:sequenceFlow id="Flow_Inspeccion" name="Requiere inspección" sourceRef="Gw_AccionesSplit" targetRef="Task_Inspeccionar" /><bpmn:sequenceFlow id="Flow_RegistrarFacturas" name="Requiere registro de facturas" sourceRef="Gw_AccionesSplit" targetRef="Task_RegistrarFacturas" /><bpmn:sequenceFlow id="Flow_Archivar" name="Por defecto" sourceRef="Gw_AccionesSplit" targetRef="Task_Archivar" /><bpmn:sequenceFlow id="Flow_InspeccionFin" sourceRef="Task_Inspeccionar" targetRef="Gw_AccionesJoin" /><bpmn:sequenceFlow id="Flow_FacturasFin" sourceRef="Task_RegistrarFacturas" targetRef="Gw_AccionesJoin" /><bpmn:sequenceFlow id="Flow_ArchivarFin" sourceRef="Task_Archivar" targetRef="Gw_AccionesJoin" /><bpmn:sequenceFlow id="Flow_Cierre" sourceRef="Gw_AccionesJoin" targetRef="End_Exitoso" /></bpmn:process>  <bpmndi:BPMNDiagram id="BPMNDiagram_Collab">
+    <bpmndi:BPMNPlane id="BPMNPlane_Collab" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Empresa_di" bpmnElement="Participant_Empresa" isHorizontal="true">
+        <omgdc:Bounds x="120" y="80" width="2136" height="698" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Compras_di" bpmnElement="Lane_Compras" isHorizontal="true">
+        <omgdc:Bounds x="150" y="80" width="2106" height="263" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <omgdc:Bounds x="260" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EnviarOrden_di" bpmnElement="Task_EnviarOrden">
+        <omgdc:Bounds x="888" y="114" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_EsperaProveedor_di" bpmnElement="Gw_EsperaProveedor">
+        <omgdc:Bounds x="1078" y="129" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Timeout48h_di" bpmnElement="Catch_Timeout48h">
+        <omgdc:Bounds x="1250" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Confirmacion_di" bpmnElement="Catch_Confirmacion">
+        <omgdc:Bounds x="1250" y="251" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Throw_Escalamiento_di" bpmnElement="Throw_Escalamiento">
+        <omgdc:Bounds x="1415" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_OrdenCancelada_di" bpmnElement="End_OrdenCancelada">
+        <omgdc:Bounds x="1580" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Exitoso_di" bpmnElement="End_Exitoso">
+        <omgdc:Bounds x="2075" y="136" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Finanzas_di" bpmnElement="Lane_Finanzas" isHorizontal="true">
+        <omgdc:Bounds x="150" y="343" width="2106" height="287" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EvaluarPoliticas_di" bpmnElement="Task_EvaluarPoliticas">
+        <omgdc:Bounds x="393" y="377" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Politicas_di" bpmnElement="Gw_Politicas" isMarkerVisible="true">
+        <omgdc:Bounds x="583" y="392" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AprobarERP_di" bpmnElement="Task_AprobarERP">
+        <omgdc:Bounds x="723" y="377" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_24h_di" bpmnElement="Boundary_24h">
+        <omgdc:Bounds x="755" y="439" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_RechazoPoliticas_di" bpmnElement="End_RechazoPoliticas">
+        <omgdc:Bounds x="755" y="514" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EnviarRecordatorio_di" bpmnElement="Task_EnviarRecordatorio">
+        <omgdc:Bounds x="888" y="377" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Recordatorio_di" bpmnElement="End_Recordatorio">
+        <omgdc:Bounds x="1085" y="399" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Transferencia_di" bpmnElement="Task_Transferencia">
+        <omgdc:Bounds x="1383" y="377" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_ErrorPago_di" bpmnElement="Boundary_ErrorPago">
+        <omgdc:Bounds x="1415" y="439" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_AccionesSplit_di" bpmnElement="Gw_AccionesSplit">
+        <omgdc:Bounds x="1573" y="392" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ErrorPago_di" bpmnElement="End_ErrorPago">
+        <omgdc:Bounds x="1580" y="514" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RegistrarFacturas_di" bpmnElement="Task_RegistrarFacturas">
+        <omgdc:Bounds x="1713" y="377" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Archivar_di" bpmnElement="Task_Archivar">
+        <omgdc:Bounds x="1713" y="492" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_AccionesJoin_di" bpmnElement="Gw_AccionesJoin">
+        <omgdc:Bounds x="1903" y="392" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Logistica_di" bpmnElement="Lane_Logistica" isHorizontal="true">
+        <omgdc:Bounds x="150" y="630" width="2106" height="148" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Inspeccionar_di" bpmnElement="Task_Inspeccionar">
+        <omgdc:Bounds x="1713" y="664" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_Proveedor_di" bpmnElement="Participant_Proveedor" isHorizontal="true">
+        <omgdc:Bounds x="120" y="854" width="2136" height="72" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <omgdi:waypoint x="296" y="154" />
+        <omgdi:waypoint x="330" y="154" />
+        <omgdi:waypoint x="330" y="417" />
+        <omgdi:waypoint x="393" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <omgdi:waypoint x="493" y="417" />
+        <omgdi:waypoint x="583" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoCumple_di" bpmnElement="Flow_NoCumple">
+        <omgdi:waypoint x="608" y="442" />
+        <omgdi:waypoint x="608" y="532" />
+        <omgdi:waypoint x="755" y="532" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Cumple_di" bpmnElement="Flow_Cumple">
+        <omgdi:waypoint x="633" y="417" />
+        <omgdi:waypoint x="723" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Recordatorio_di" bpmnElement="Flow_Recordatorio">
+        <omgdi:waypoint x="773" y="475" />
+        <omgdi:waypoint x="773" y="495" />
+        <omgdi:waypoint x="831" y="495" />
+        <omgdi:waypoint x="831" y="417" />
+        <omgdi:waypoint x="888" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinRecordatorio_di" bpmnElement="Flow_FinRecordatorio">
+        <omgdi:waypoint x="988" y="417" />
+        <omgdi:waypoint x="1085" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Aprobada_di" bpmnElement="Flow_Aprobada">
+        <omgdi:waypoint x="823" y="417" />
+        <omgdi:waypoint x="847" y="417" />
+        <omgdi:waypoint x="847" y="154" />
+        <omgdi:waypoint x="888" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Espera_di" bpmnElement="Flow_Espera">
+        <omgdi:waypoint x="988" y="154" />
+        <omgdi:waypoint x="1078" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_WaitConfirm_di" bpmnElement="Flow_WaitConfirm">
+        <omgdi:waypoint x="1103" y="179" />
+        <omgdi:waypoint x="1103" y="269" />
+        <omgdi:waypoint x="1250" y="269" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_WaitTimeout_di" bpmnElement="Flow_WaitTimeout">
+        <omgdi:waypoint x="1128" y="154" />
+        <omgdi:waypoint x="1250" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Escalar_di" bpmnElement="Flow_Escalar">
+        <omgdi:waypoint x="1286" y="154" />
+        <omgdi:waypoint x="1415" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CancelarOrden_di" bpmnElement="Flow_CancelarOrden">
+        <omgdi:waypoint x="1451" y="154" />
+        <omgdi:waypoint x="1580" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Pagar_di" bpmnElement="Flow_Pagar">
+        <omgdi:waypoint x="1286" y="269" />
+        <omgdi:waypoint x="1320" y="269" />
+        <omgdi:waypoint x="1320" y="417" />
+        <omgdi:waypoint x="1383" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ErrorBancario_di" bpmnElement="Flow_ErrorBancario">
+        <omgdi:waypoint x="1433" y="475" />
+        <omgdi:waypoint x="1433" y="532" />
+        <omgdi:waypoint x="1580" y="532" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_PagoOk_di" bpmnElement="Flow_PagoOk">
+        <omgdi:waypoint x="1483" y="417" />
+        <omgdi:waypoint x="1573" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Inspeccion_di" bpmnElement="Flow_Inspeccion">
+        <omgdi:waypoint x="1598" y="442" />
+        <omgdi:waypoint x="1598" y="456" />
+        <omgdi:waypoint x="1630" y="456" />
+        <omgdi:waypoint x="1630" y="704" />
+        <omgdi:waypoint x="1713" y="704" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RegistrarFacturas_di" bpmnElement="Flow_RegistrarFacturas">
+        <omgdi:waypoint x="1598" y="392" />
+        <omgdi:waypoint x="1598" y="376" />
+        <omgdi:waypoint x="1682" y="376" />
+        <omgdi:waypoint x="1682" y="417" />
+        <omgdi:waypoint x="1713" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Archivar_di" bpmnElement="Flow_Archivar">
+        <omgdi:waypoint x="1623" y="417" />
+        <omgdi:waypoint x="1655" y="417" />
+        <omgdi:waypoint x="1655" y="532" />
+        <omgdi:waypoint x="1713" y="532" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_InspeccionFin_di" bpmnElement="Flow_InspeccionFin">
+        <omgdi:waypoint x="1813" y="704" />
+        <omgdi:waypoint x="1845" y="704" />
+        <omgdi:waypoint x="1845" y="417" />
+        <omgdi:waypoint x="1903" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FacturasFin_di" bpmnElement="Flow_FacturasFin">
+        <omgdi:waypoint x="1813" y="417" />
+        <omgdi:waypoint x="1903" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ArchivarFin_di" bpmnElement="Flow_ArchivarFin">
+        <omgdi:waypoint x="1813" y="532" />
+        <omgdi:waypoint x="1861" y="532" />
+        <omgdi:waypoint x="1861" y="417" />
+        <omgdi:waypoint x="1903" y="417" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Cierre_di" bpmnElement="Flow_Cierre">
+        <omgdi:waypoint x="1953" y="417" />
+        <omgdi:waypoint x="1996" y="417" />
+        <omgdi:waypoint x="1996" y="154" />
+        <omgdi:waypoint x="2075" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MsgFlow_Orden_di" bpmnElement="MsgFlow_Orden">
+        <omgdi:waypoint x="988" y="154" />
+        <omgdi:waypoint x="1012" y="154" />
+        <omgdi:waypoint x="1012" y="854" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MsgFlow_Confirmacion_di" bpmnElement="MsgFlow_Confirmacion">
+        <omgdi:waypoint x="1268" y="854" />
+        <omgdi:waypoint x="1268" y="287" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
