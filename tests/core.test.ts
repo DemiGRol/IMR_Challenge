@@ -4,6 +4,7 @@ import {
   validateAndLayoutBpmn,
   BpmnValidationError,
   compactBpmnForPrompt,
+  countBpmnStats,
 } from '../src/lib/bpmn/validator.ts';
 import { separateOverlappingEdges } from '../src/lib/bpmn/layout-postprocess.ts';
 import { buildFallbackLayout } from '../src/lib/bpmn/fallback-layout.ts';
@@ -1136,4 +1137,36 @@ test('validateAndLayoutBpmn positions upper/lower external black-box pools on op
     minRetryY < getY('T_Ask'),
     `Expected top-row retry loop (minY=${minRetryY}) above T_Ask (y=${getY('T_Ask')})`
   );
+});
+
+test('compactBpmnForPrompt and countBpmnStats handle bpmn2 and default-namespace BPMN XML', () => {
+  const bpmn2Xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" id="D2">
+  <bpmn2:process id="P2" isExecutable="false">
+    <bpmn2:startEvent id="S2"><bpmn2:outgoing>F1</bpmn2:outgoing></bpmn2:startEvent>
+    <bpmn2:userTask id="T2"><bpmn2:incoming>F1</bpmn2:incoming><bpmn2:outgoing>F2</bpmn2:outgoing></bpmn2:userTask>
+    <bpmn2:exclusiveGateway id="G2"><bpmn2:incoming>F2</bpmn2:incoming><bpmn2:outgoing>F3</bpmn2:outgoing></bpmn2:exclusiveGateway>
+    <bpmn2:endEvent id="E2"><bpmn2:incoming>F3</bpmn2:incoming></bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="F1" sourceRef="S2" targetRef="T2" />
+    <bpmn2:sequenceFlow id="F2" sourceRef="T2" targetRef="G2" />
+    <bpmn2:sequenceFlow id="F3" sourceRef="G2" targetRef="E2" />
+  </bpmn2:process>
+  <bpmndi:BPMNDiagram id="Diag2"><bpmndi:BPMNPlane id="Plane2" bpmnElement="P2" /></bpmndi:BPMNDiagram>
+</bpmn2:definitions>`;
+
+  const defaultNsXml = `<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" id="D3">
+  <process id="P3" isExecutable="false">
+    <startEvent id="S3" /><task id="T3" /><endEvent id="E3" />
+    <sequenceFlow id="F_A" sourceRef="S3" targetRef="T3" /><sequenceFlow id="F_B" sourceRef="T3" targetRef="E3" />
+  </process>
+  <BPMNDiagram id="Diag3"><BPMNPlane id="Plane3" /></BPMNDiagram>
+</definitions>`;
+
+  const compacted2 = compactBpmnForPrompt(bpmn2Xml);
+  assert.ok(!compacted2.includes('BPMNDiagram'));
+  assert.deepEqual(countBpmnStats(bpmn2Xml), { elementCount: 4, gatewayCount: 1, flowCount: 3 });
+
+  const compactedDefault = compactBpmnForPrompt(defaultNsXml);
+  assert.ok(!compactedDefault.includes('BPMNDiagram'));
+  assert.deepEqual(countBpmnStats(defaultNsXml), { elementCount: 3, gatewayCount: 0, flowCount: 2 });
 });

@@ -121,6 +121,7 @@ interface BpmnEditorProps {
   xmlGetterRef: MutableRefObject<(() => Promise<string | null>) | null>;
   onCreateBlank: () => void;
   onFocusDescription?: () => void;
+  onCancelGeneration?: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onNotify: (message: string) => void;
 }
@@ -207,6 +208,7 @@ export default function BpmnEditor({
   xmlGetterRef,
   onCreateBlank,
   onFocusDescription,
+  onCancelGeneration,
   onDirtyChange,
   onNotify,
 }: BpmnEditorProps) {
@@ -911,6 +913,13 @@ export default function BpmnEditor({
                 <div className="progress-bar" style={{ width: `${phase.pct}%` }} />
               </div>
               <p className="loading-phase">{phase.label}</p>
+              {onCancelGeneration && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <button type="button" className="tool-btn" onClick={onCancelGeneration}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -100,6 +100,9 @@ function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
   );
 }
 
+const SESSION_DRAFT_KEY = 'imr_session_draft_v1';
+const MAX_DRAFT_XML_CHARS = 250_000;
+
 function stripBpmnDi(xml: string): string {
   return xml
     .replace(/<(?:[a-zA-Z0-9_-]+:)?BPMNDiagram[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?BPMNDiagram>/gi, '')
@@ -139,6 +142,8 @@ export default function HomePage() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const xmlGetterRef = useRef<(() => Promise<string | null>) | null>(null);
   const pendingImportRef = useRef<{ filename: string; prevSource: DiagramSource } | null>(null);
+  const generateAbortRef = useRef<AbortController | null>(null);
+  const draftHydratedRef = useRef(false);
 
   useEffect(() => {
     const currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -147,6 +152,75 @@ export default function HomePage() {
     const dsFont = document.documentElement.dataset.fontSize;
     if (dsFont === 'sm' || dsFont === 'md' || dsFont === 'lg') {
       setFontSize(dsFont);
+    }
+
+    let restoreToastId: number | undefined;
+    try {
+      const rawDraft = window.localStorage.getItem(SESSION_DRAFT_KEY);
+      if (rawDraft) {
+        const draft = JSON.parse(rawDraft) as {
+          description?: unknown;
+          generationMode?: unknown;
+          bpmnXml?: unknown;
+          assumptions?: unknown;
+          recommendations?: unknown;
+          resolvedIndices?: unknown;
+          resolvedHistory?: unknown;
+          diagramSource?: unknown;
+        };
+        let restoredSomething = false;
+        if (typeof draft.description === 'string' && draft.description.length <= 4000) {
+          setDescription(draft.description);
+          if (draft.description.trim()) restoredSomething = true;
+        }
+        if (draft.generationMode === 'fast' || draft.generationMode === 'detailed') {
+          setGenerationMode(draft.generationMode);
+        }
+        if (Array.isArray(draft.assumptions)) {
+          setAssumptions(draft.assumptions as StructuredAssumption[]);
+        }
+        if (Array.isArray(draft.recommendations)) {
+          setRecommendations(draft.recommendations as ModelingRecommendation[]);
+        }
+        if (Array.isArray(draft.resolvedIndices)) {
+          setResolvedIndices(
+            draft.resolvedIndices.filter((n): n is number => typeof n === 'number')
+          );
+        }
+        if (Array.isArray(draft.resolvedHistory)) {
+          setResolvedHistory(
+            draft.resolvedHistory.filter((q): q is string => typeof q === 'string').slice(-30)
+          );
+        }
+        if (
+          typeof draft.bpmnXml === 'string' &&
+          draft.bpmnXml.length > 20 &&
+          draft.bpmnXml.length <= MAX_DRAFT_XML_CHARS &&
+          draft.bpmnXml.trim().startsWith('<') &&
+          !/(?:<!DOCTYPE|<!ENTITY|<script\b|javascript:)/i.test(draft.bpmnXml)
+        ) {
+          setBpmnXml(draft.bpmnXml);
+          setLoadRevision((prev) => prev + 1);
+          if (
+            draft.diagramSource === 'ai' ||
+            draft.diagramSource === 'blank' ||
+            draft.diagramSource === 'imported'
+          ) {
+            setDiagramSource(draft.diagramSource);
+          } else {
+            setDiagramSource('ai');
+          }
+          restoredSomething = true;
+        }
+        if (restoredSomething) {
+          setToast('Última sesión restaurada.');
+          restoreToastId = window.setTimeout(() => setToast(null), 2600);
+        }
+      }
+    } catch {
+      // Ignora borradores corruptos o almacenamiento no disponible.
+    } finally {
+      draftHydratedRef.current = true;
     }
 
     let timerId: number | undefined;
@@ -159,8 +233,57 @@ export default function HomePage() {
     }
     return () => {
       if (timerId !== undefined) window.clearTimeout(timerId);
+      if (restoreToastId !== undefined) window.clearTimeout(restoreToastId);
     };
   }, []);
+
+  useEffect(() => {
+    if (!draftHydratedRef.current || loading || analyzing) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          if (!description.trim() && !bpmnXml && diagramSource === 'empty') {
+            window.localStorage.removeItem(SESSION_DRAFT_KEY);
+            return;
+          }
+          let xmlToSave = bpmnXml;
+          if (isDirty || (!xmlToSave && diagramSource === 'blank')) {
+            const live = await xmlGetterRef.current?.();
+            if (live) xmlToSave = live;
+          }
+          if (xmlToSave && xmlToSave.length > MAX_DRAFT_XML_CHARS) {
+            xmlToSave = bpmnXml;
+          }
+          const payload = {
+            description,
+            generationMode,
+            bpmnXml: xmlToSave && xmlToSave.length <= MAX_DRAFT_XML_CHARS ? xmlToSave : null,
+            assumptions,
+            recommendations,
+            resolvedIndices,
+            resolvedHistory: resolvedHistory.slice(-30),
+            diagramSource,
+          };
+          window.localStorage.setItem(SESSION_DRAFT_KEY, JSON.stringify(payload));
+        } catch {
+          // Ignora límite de almacenamiento del navegador.
+        }
+      })();
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [
+    description,
+    generationMode,
+    bpmnXml,
+    assumptions,
+    recommendations,
+    resolvedIndices,
+    resolvedHistory,
+    diagramSource,
+    isDirty,
+    loading,
+    analyzing,
+  ]);
 
   const handleFontSizeChange = useCallback((nextSize: 'sm' | 'md' | 'lg') => {
     document.documentElement.dataset.fontSize = nextSize;
@@ -374,6 +497,11 @@ export default function HomePage() {
     ) {
       return;
     }
+    try {
+      window.localStorage.removeItem(SESSION_DRAFT_KEY);
+    } catch {
+      // Ignora errores de almacenamiento.
+    }
     setBpmnXml(null);
     setAssumptions([]);
     setRecommendations([]);
@@ -411,6 +539,9 @@ export default function HomePage() {
     setActiveAssumptionIdx(null);
     setActiveRecommendationIdx(null);
 
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
+
     try {
       const liveXml =
         iterationMode === 'preserve-edits' ? await xmlGetterRef.current?.() : null;
@@ -419,6 +550,7 @@ export default function HomePage() {
       const res = await fetch('/api/generate-bpmn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           processDescription: description.trim(),
           previousBpmnXml: semanticPreviousXml || undefined,
@@ -461,12 +593,23 @@ export default function HomePage() {
       if (nextAssumptions.length > 0 || nextRecommendations.length > 0) {
         setActiveTab('assumptions');
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        showToast('Generación cancelada.');
+        return;
+      }
       setError('Error de conexión con el servidor. Verificá tu red e intentá nuevamente.');
     } finally {
+      if (generateAbortRef.current === controller) {
+        generateAbortRef.current = null;
+      }
       setLoading(false);
     }
   };
+
+  const handleCancelGeneration = useCallback(() => {
+    generateAbortRef.current?.abort();
+  }, []);
 
   const handleToggleResolvedAssumption = (idx: number) => {
     const question = assumptions[idx]?.question?.trim();
@@ -1122,6 +1265,7 @@ export default function HomePage() {
           xmlGetterRef={xmlGetterRef}
           onCreateBlank={handleCreateBlank}
           onFocusDescription={handleFocusDescription}
+          onCancelGeneration={handleCancelGeneration}
           onDirtyChange={setIsDirty}
           onNotify={showToast}
         />

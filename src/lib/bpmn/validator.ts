@@ -90,7 +90,10 @@ export class BpmnValidationError extends Error {
 
 export function compactBpmnForPrompt(xml: string): string {
   return xml
-    .replace(/<bpmndi:BPMNDiagram[\s\S]*?<\/bpmndi:BPMNDiagram>/gi, '')
+    .replace(
+      /<(?:[a-zA-Z0-9_-]+:)?BPMNDiagram\b[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?BPMNDiagram>/gi,
+      ''
+    )
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\s+xmlns:(?:bpmndi|dc|di|omgdc|omgdi|bioc|color)="[^"]*"/gi, '')
     .replace(/\s+(?:exporter|exporterVersion)="[^"]*"/gi, '')
@@ -104,14 +107,14 @@ export function countBpmnStats(xml: string): {
   gatewayCount: number;
   flowCount: number;
 } {
-  const seqFlows = (xml.match(/<bpmn:sequenceFlow\b/g) || []).length;
-  const msgFlows = (xml.match(/<bpmn:messageFlow\b/g) || []).length;
+  const seqFlows = (xml.match(/<(?:[a-zA-Z0-9_-]+:)?sequenceFlow\b/g) || []).length;
+  const msgFlows = (xml.match(/<(?:[a-zA-Z0-9_-]+:)?messageFlow\b/g) || []).length;
   const gatewayCount = (
-    xml.match(/<bpmn:(?:exclusive|parallel|inclusive|eventBased)Gateway\b/g) || []
+    xml.match(/<(?:[a-zA-Z0-9_-]+:)?(?:exclusive|parallel|inclusive|eventBased)Gateway\b/g) || []
   ).length;
   const tasksAndEvents = (
     xml.match(
-      /<bpmn:(?:startEvent|endEvent|intermediateCatchEvent|intermediateThrowEvent|boundaryEvent|task|userTask|serviceTask|sendTask|receiveTask|manualTask|scriptTask|businessRuleTask)\b/g
+      /<(?:[a-zA-Z0-9_-]+:)?(?:startEvent|endEvent|intermediateCatchEvent|intermediateThrowEvent|boundaryEvent|task|userTask|serviceTask|sendTask|receiveTask|manualTask|scriptTask|businessRuleTask)\b/g
     ) || []
   ).length;
   return {
