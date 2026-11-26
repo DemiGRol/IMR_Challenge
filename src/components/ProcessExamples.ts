@@ -25,7 +25,7 @@ export const PROCESS_EXAMPLES: ProcessExample[] = [
   },
   {
     id: 'collaboration-events',
-    label: 'Colaboración y eventos (V4)',
+    label: 'Colaboración y eventos',
     description:
       'El proceso de la Empresa inicia al recibir un mensaje de solicitud de compra en el área de Compras. Primero, Finanzas verifica el presupuesto disponible; si no alcanza, se cierra como solicitud rechazada por error presupuestario. Si hay presupuesto, Compras envía la orden de compra al Proveedor externo y queda esperando la respuesta: si recibe la confirmación del Proveedor antes de las 48 horas, Finanzas procesa el pago y el proceso finaliza como compra completada; si se cumple el plazo de 48 horas sin respuesta, Compras emite una alerta de escalamiento por demora y finaliza como orden cancelada.',
   },

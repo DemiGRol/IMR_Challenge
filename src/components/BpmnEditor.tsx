@@ -123,6 +123,7 @@ interface BpmnEditorProps {
   onFocusDescription?: () => void;
   onCancelGeneration?: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onDiagramChange?: () => void;
   onNotify: (message: string) => void;
 }
 
@@ -163,7 +164,8 @@ function computeAnchorPos(
   const rawTop =
     placement === 'below' ? (host.y + host.height + 48 - vb.y) * scale : topAbove;
 
-  const left = Math.max(135, Math.min(Math.max(135, stageW - 135), hostCenterX));
+  const halfW = Math.min(175, Math.max(110, stageW / 2 - 12));
+  const left = Math.max(halfW, Math.min(Math.max(halfW, stageW - halfW), hostCenterX));
   const top =
     placement === 'above'
       ? Math.max(54, Math.min(Math.max(54, stageH - 16), rawTop))
@@ -210,6 +212,7 @@ export default function BpmnEditor({
   onFocusDescription,
   onCancelGeneration,
   onDirtyChange,
+  onDiagramChange,
   onNotify,
 }: BpmnEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -222,6 +225,8 @@ export default function BpmnEditor({
   onSelectRef.current = onElementSelectAssumption;
   const onDirtyChangeRef = useRef(onDirtyChange);
   onDirtyChangeRef.current = onDirtyChange;
+  const onDiagramChangeRef = useRef(onDiagramChange);
+  onDiagramChangeRef.current = onDiagramChange;
   const onImportResultRef = useRef(onImportResult);
   onImportResultRef.current = onImportResult;
   const [importError, setImportError] = useState<string | null>(null);
@@ -327,6 +332,7 @@ export default function BpmnEditor({
       setCanUndo(undoable);
       setCanRedo(commandStack.canRedo());
       onDirtyChangeRef.current(undoable);
+      onDiagramChangeRef.current?.();
       refreshBoundarySelection();
     };
 
@@ -895,9 +901,14 @@ export default function BpmnEditor({
 
         {importError && !loading && (
           <div className="empty-state">
-            <div className="empty-card">
+            <div className="empty-card" role="alert">
               <h2>Error al cargar el diagrama</h2>
               <p>{importError}</p>
+              <div className="empty-actions">
+                <button type="button" className="tool-btn" onClick={() => setImportError(null)}>
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         )}
