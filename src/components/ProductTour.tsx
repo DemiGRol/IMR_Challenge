@@ -112,6 +112,10 @@ export default function ProductTour({ open, onClose, onBeforeStep }: ProductTour
     }
 
     onBeforeStep?.(stepIdx);
+    const el = document.querySelector(currentStep.target) as HTMLElement | null;
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
     const raf = requestAnimationFrame(() => measureTarget());
     const timer = setTimeout(() => measureTarget(), 290);
 
@@ -143,9 +147,13 @@ export default function ProductTour({ open, onClose, onBeforeStep }: ProductTour
     }
   }, [open, stepIdx, rect]);
 
+  const hasRect = rect !== null;
+
   useEffect(() => {
     if (!open) return;
-    popoverRef.current?.focus();
+    if (hasRect) {
+      popoverRef.current?.focus();
+    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -162,7 +170,7 @@ export default function ProductTour({ open, onClose, onBeforeStep }: ProductTour
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, stepIdx, markCompletedAndClose]);
+  }, [open, stepIdx, hasRect, markCompletedAndClose]);
 
   if (!open || !rect) return null;
 

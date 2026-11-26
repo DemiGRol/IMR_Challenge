@@ -119,6 +119,7 @@ export default function HomePage() {
   const [blankTrigger, setBlankTrigger] = useState(0);
   const [diagramSource, setDiagramSource] = useState<DiagramSource>('empty');
   const [isDirty, setIsDirty] = useState(false);
+  const [diagramRevision, setDiagramRevision] = useState(0);
   const [assumptions, setAssumptions] = useState<StructuredAssumption[]>([]);
   const [recommendations, setRecommendations] = useState<ModelingRecommendation[]>([]);
   const [resolvedIndices, setResolvedIndices] = useState<number[]>([]);
@@ -281,9 +282,14 @@ export default function HomePage() {
     resolvedHistory,
     diagramSource,
     isDirty,
+    diagramRevision,
     loading,
     analyzing,
   ]);
+
+  const handleDiagramChange = useCallback(() => {
+    setDiagramRevision((prev) => prev + 1);
+  }, []);
 
   const handleFontSizeChange = useCallback((nextSize: 'sm' | 'md' | 'lg') => {
     document.documentElement.dataset.fontSize = nextSize;
@@ -752,10 +758,11 @@ export default function HomePage() {
             className={`step-pill ${activeStep === 1 ? 'active' : ''} ${
               activeStep > 1 || trimmedLength >= 10 ? 'done' : ''
             }`}
+            aria-current={activeStep === 1 ? 'step' : undefined}
             onClick={handleFocusDescription}
           >
             <span className="step-num">1</span>
-            <span>Describir</span>
+            <span className="step-label">Describir</span>
           </button>
           <span className="step-line" aria-hidden="true" />
           <button
@@ -763,6 +770,7 @@ export default function HomePage() {
             className={`step-pill ${activeStep === 2 ? 'active' : ''} ${
               hasDiagram && activeStep > 2 ? 'done' : ''
             }`}
+            aria-current={activeStep === 2 ? 'step' : undefined}
             onClick={() => {
               if (!hasDiagram && isValidLength && !loading) {
                 void generateDiagram();
@@ -772,7 +780,7 @@ export default function HomePage() {
             }}
           >
             <span className="step-num">2</span>
-            <span>Modelar</span>
+            <span className="step-label">Modelar</span>
           </button>
           <span className="step-line" aria-hidden="true" />
           <button
@@ -780,13 +788,14 @@ export default function HomePage() {
             className={`step-pill ${activeStep === 3 ? 'active' : ''} ${
               hasDiagram && assumptions.length > 0 && pendingAssumptionsCount === 0 ? 'done' : ''
             }`}
+            aria-current={activeStep === 3 ? 'step' : undefined}
             onClick={() => {
               setSidebarOpen(true);
               setActiveTab('assumptions');
             }}
           >
             <span className="step-num">3</span>
-            <span>Auditar</span>
+            <span className="step-label">Auditar</span>
             {pendingAssumptionsCount > 0 && (
               <span className="step-count">{pendingAssumptionsCount}</span>
             )}
@@ -803,6 +812,7 @@ export default function HomePage() {
             className="tool-btn"
             onClick={() => setTourOpen(true)}
             title="Abrir guía interactiva de la plataforma"
+            aria-label="Abrir guía interactiva"
           >
             <HelpCircleIcon />
             <span className="header-label-desktop">Guía</span>
@@ -848,7 +858,14 @@ export default function HomePage() {
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
-          <button type="button" className="tool-btn" onClick={handleCreateBlank} disabled={loading}>
+          <button
+            type="button"
+            className="tool-btn"
+            onClick={handleCreateBlank}
+            disabled={loading}
+            title="Crear diagrama en blanco"
+            aria-label="Nuevo diagrama en blanco"
+          >
             <PlusIcon />
             <span className="header-label-desktop">Nuevo en blanco</span>
           </button>
@@ -894,8 +911,24 @@ export default function HomePage() {
                 <div data-tour="description-input">
                   <label htmlFor="process-description" className="field-label">
                     <span>Descripción del proceso</span>
-                    <span className={`char-count mono ${isValidLength ? 'valid' : ''}`}>
-                      {trimmedLength} / 4.000
+                    <span className="field-label-meta">
+                      {trimmedLength > 0 && !loading && (
+                        <button
+                          type="button"
+                          className="clear-text-btn"
+                          onClick={() => {
+                            setDescription('');
+                            setActiveExampleId(null);
+                            setError(null);
+                            textareaRef.current?.focus();
+                          }}
+                        >
+                          Limpiar
+                        </button>
+                      )}
+                      <span className={`char-count mono ${isValidLength ? 'valid' : ''}`}>
+                        {trimmedLength} / 4.000
+                      </span>
                     </span>
                   </label>
                   <div className="textarea-shell">
@@ -944,6 +977,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       className={`tab-btn ${generationMode === 'fast' ? 'active' : ''}`}
+                      aria-pressed={generationMode === 'fast'}
                       disabled={loading}
                       onClick={() => setGenerationMode('fast')}
                     >
@@ -952,6 +986,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       className={`tab-btn ${generationMode === 'detailed' ? 'active' : ''}`}
+                      aria-pressed={generationMode === 'detailed'}
                       disabled={loading}
                       onClick={() => setGenerationMode('detailed')}
                     >
@@ -983,8 +1018,7 @@ export default function HomePage() {
                   {isDirty && (
                     <button
                       type="button"
-                      className="tool-btn ghost-danger-btn"
-                      style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                      className="ghost-danger-btn"
                       disabled={loading || !isValidLength}
                       onClick={() => void generateDiagram('fresh')}
                     >
@@ -999,8 +1033,10 @@ export default function HomePage() {
 
               {error && (
                 <div className="status-box status-error" role="alert">
-                  <AlertCircleIcon />
-                  <span style={{ flex: 1 }}>{error}</span>
+                  <div className="status-error-row">
+                    <AlertCircleIcon />
+                    <span style={{ flex: 1 }}>{error}</span>
+                  </div>
                   <button
                     type="button"
                     className="retry-btn"
@@ -1123,9 +1159,11 @@ export default function HomePage() {
                           key={idx}
                           role="button"
                           tabIndex={0}
+                          aria-expanded={isActive}
                           className={`assumption-card impact-border-${item.impact || 'medium'} ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''}`}
                           onClick={toggleCard}
                           onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               toggleCard();
@@ -1267,6 +1305,7 @@ export default function HomePage() {
           onFocusDescription={handleFocusDescription}
           onCancelGeneration={handleCancelGeneration}
           onDirtyChange={setIsDirty}
+          onDiagramChange={handleDiagramChange}
           onNotify={showToast}
         />
       </main>
