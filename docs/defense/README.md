@@ -1,6 +1,6 @@
-# Defensa técnica — IMR BPMN Studio (`v0.7.1`, 30 min)
+# Defensa técnica — IMR BPMN Studio (`v0.7.3`, 30 min)
 
-> Guía operativa para la entrevista técnica basada exclusivamente en artefactos, pruebas y decisiones verificadas del repositorio (`README.md`, `docs/architecture/decisions/ADR-001..006`, `docs/quality/benchmark/report.md`, `docs/defense/issues-and-lessons.md` y `tests/core.test.ts`).
+> Guía operativa para la entrevista técnica basada exclusivamente en artefactos, pruebas y decisiones verificadas del repositorio (`README.md`, `docs/architecture/decisions/ADR-001..006`, `docs/diagrams/*`, `docs/quality/benchmark/report.md`, `docs/defense/issues-and-lessons.md` y `tests/core.test.ts`).
 
 ---
 
@@ -10,8 +10,8 @@
 |---|---|---|---|
 | **1. Problema y decisiones clave** | 4 min | Mostrar criterio de arquitectura y alcance MVP sin sobre-ingeniería. | Consigna ([challenge.md](../brief/challenge.md)) + 4 ADRs base + por qué LLM semántico separado de DI determinista (`ADR-001`). |
 | **2. Demo guiada en vivo** | 9 min | Demostrar todo el ciclo de valor (*Describir → Modelar → Auditar → Editar → Exportar*). | URL en Vercel (`https://imr-challenge.vercel.app/`) o `localhost:3000` con modo claro/oscuro, Tour y ejemplo complejo. |
-| **3. Arquitectura y resiliencia** | 7 min | Explicar qué pasa bajo el capó al generar, validar y auditar. | `ResilientLlmAdapter` (`ADR-005`), `validator.ts` (`NCName`, `bpmn-moddle`), `collaboration-layout.ts` + `fallback-layout.ts`. |
-| **4. Evidencia empírica y seguridad** | 5 min | Respaldar decisiones con métricas reales y control de calidad. | Benchmark 18/18 (`dashboard.html`), costos USD, 33 tests (`npm test`) y cierre de auditoría (`INC-17`). |
+| **3. Arquitectura y resiliencia** | 7 min | Explicar qué pasa bajo el capó al generar, validar y auditar. | [architecture.md](../diagrams/architecture.md), [sequence.md](../diagrams/sequence.md), [states.md](../diagrams/states.md), `ResilientLlmAdapter` (`ADR-005`), `validator.ts` y `collaboration-layout.ts`. |
+| **4. Evidencia empírica y seguridad** | 5 min | Respaldar decisiones con métricas reales y control de calidad. | Benchmark 18/18 (`dashboard.html`), costos USD, 34 tests (`npm test`) y cierre de auditoría (`INC-17`). |
 | **5. Preguntas IMR y Roadmap** | 5 min | Responder preguntas técnicas y proyectar evolución productiva. | [roadmap-future.md](../roadmap-future.md) (qué ya se cerró vs. Redis, Auth, MCP Server, inline answers). |
 
 ---
@@ -28,6 +28,11 @@
 ### Caso B — Demo avanzada (capacidad BPMN 2.0 + layout general)
 - Pegar el caso de **denuncia de siniestro vehicular** (3 Pools: *Aseguradora* con 3 Lanes + *Asegurado* arriba + *Taller Mecánico* abajo; `BoundaryEvent` interruptivo y no interruptivo; `InclusiveGateway` con `default`; `EventBasedGateway`; loop y multi-instancia; y 2 recomendaciones técnicas BPMN en el panel lateral).
 - Seleccionar los 2 eventos adjuntos de *Consultar servicio antifraude* para mostrar la barra contextual anclada sobre la tarea y el botón **Intercambiar** adaptando los flujos al instante.
+
+### Caso C — Meta-demo ("IMR BPMN Studio se modela a sí mismo")
+- Texto calibrado (~1.100 chars) para exhibir en una sola corrida **3 Pools** (*Analista externo*, *IMR BPMN Studio* con **3 Lanes**, *Proveedores IA*), tareas tipadas, **Boundary Events** (`Timer` + `Error`), **XOR**, **AND**, **InclusiveGateway**, **MessageFlows** y fin exitoso vs. error:
+
+> El proceso de **IMR BPMN Studio** comienza cuando un **Analista** externo envía la descripción textual de un proceso al área de **API y Seguridad**. Primero, el sistema valida el formato y verifica el límite de solicitudes por usuario; si supera la cuota permitida, rechaza la petición y el proceso finaliza por error de cuota. Si está permitido, consulta si ya existe un diagrama en caché para una generación nueva: si existe, entrega directamente el diagrama al área de **Editor Web**; si no existe, envía la solicitud al servicio externo de **Proveedores IA** (Vertex AI). Si la consulta a Vertex AI falla o excede el plazo máximo de espera, se dispara automáticamente la derivación al proveedor de respaldo (Google AI Studio). Al recibir la respuesta estructurada con el XML semántico y los supuestos, el área de **Motor BPMN** valida la seguridad, los identificadores y las reglas del estándar: si detecta un error estructural, solicita una auto-reparación a **Proveedores IA**; si falla nuevamente, el proceso finaliza por error de validación. Cuando el modelo es válido, el **Motor BPMN** calcula el layout determinista con coordenadas. A continuación, en paralelo, **API y Seguridad** registra los costos y la telemetría en memoria mientras **Editor Web** renderiza el diagrama editable y resalta los supuestos detectados. Finalmente, el **Analista** puede realizar una o más de las siguientes acciones: ajustar elementos manualmente en el lienzo, solicitar un re-análisis de supuestos sin sobrescribir el dibujo, o exportar el resultado en formato `.bpmn` o `.svg`, finalizando el proceso de modelado exitoso.
 
 ### Plan B (si Vertex AI devuelve `429 RESOURCE_EXHAUSTED` o cae la red)
 1. El sistema activa automáticamente el **fallback a Google AI Studio** (`ADR-005`) dentro del presupuesto único de `ResilientLlmAdapter`.
@@ -56,8 +61,8 @@
 
 ## 4. Pruebas reales, métricas verificadas y limitaciones
 
-- **Pruebas automatizadas (`npm test`)**: **33/33 pruebas** aprobadas sobre `validator.ts`, `collaboration-layout.ts`, `fallback-layout.ts`, `layout-postprocess.ts`, `cache.ts`, `rate-limit.ts`, `telemetry.ts` y `ResilientLlmAdapter` (incluye tests de inyección por entidades XML, `NCName`, puertos convergentes/divergentes, autopistas perimetrales y failovers).
-- **Compilación y tipos**: `tsc --noEmit` (**0 errores**) y `next build` limpio (`114 kB` First Load JS en `/`).
+- **Pruebas automatizadas (`npm test`)**: **34/34 pruebas** aprobadas sobre `validator.ts`, `collaboration-layout.ts`, `fallback-layout.ts`, `layout-postprocess.ts`, `cache.ts`, `rate-limit.ts`, `telemetry.ts` y `ResilientLlmAdapter` (incluye tests de inyección por entidades XML, `NCName`, puertos convergentes/divergentes, compactación densa entre carriles ascendentes, saltos rectos despejados y failovers).
+- **Compilación y tipos**: `tsc --noEmit` (**0 errores**) y `next build` limpio (`115 kB` First Load JS en `/`, cierre UX/UI `v0.7.2` + fix de layout `v0.7.3`).
 - **Benchmark comparativo de modos (`docs/quality/benchmark/report.md`)**: **18/18 corridas exitosas** (3 escenarios × 2 modos × 3 repeticiones), costo total medido de **`USD 0.7750`**, comparando latencia, tokens (`thinkingTokens`), reparaciones y detección de supuestos entre `Rápido` (`LOW`) y `Detallado` (`MEDIUM`).
 - **Limitaciones conscientes (MVP stateless)**: caché, rate-limit y telemetría viven en memoria por instancia serverless (sin DB ni auth); `SubProcess` y `ComplexGateway` quedan fuera del subconjunto BPMN; en Vercel Hobby se requiere **Fluid Compute** activo para sostener `maxDuration = 300` / `120` (sin él recorta a `60 s`).
 

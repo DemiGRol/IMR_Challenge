@@ -674,6 +674,7 @@ export function buildCollaborationLayout(
 
       const sortedCols = Array.from(byCol.keys()).sort((a, b) => a - b);
       const colSlotAssignments = new Map<number, Array<{ node: CollabFlowElement; subRow: number }>>();
+      let laneMaxAssignedRow = 0;
 
       const preferredSubRow = (nodeId: string): number => {
         const normalPreds = (incomingNormalByNodeId.get(nodeId) || []).filter(
@@ -708,7 +709,7 @@ export function buildCollaborationLayout(
           const avgOtherLane =
             crossLanePreds.reduce((s, l) => s + l, 0) / crossLanePreds.length;
           if (avgOtherLane < laneIdx) return -0.5;
-          if (avgOtherLane > laneIdx) return 99;
+          if (avgOtherLane > laneIdx) return laneMaxAssignedRow + 1;
         }
 
         return verticalGravity(nodeId, laneIdx) - laneIdx;
@@ -791,26 +792,28 @@ export function buildCollaborationLayout(
           const slot = Math.max(nextFreeSlot, desiredList[idx]);
           placements.push({ node, subRow: slot });
           assignedSubRow.set(node.id as string, slot);
+          if (slot > laneMaxAssignedRow) laneMaxAssignedRow = slot;
           nextFreeSlot = slot + 1;
         });
         colSlotAssignments.set(col, placements);
       }
 
-      // Normalizar filas del carril para eliminar espacios muertos arriba
-      let minUsedSlot = Infinity;
+      // Compactación densa de sub-filas del carril (garantiza 0..K-1 sin huecos vacíos ni bandas gigantes)
+      const usedSlots = new Set<number>();
       for (const placements of colSlotAssignments.values()) {
         for (const p of placements) {
-          if (p.subRow < minUsedSlot) minUsedSlot = p.subRow;
+          usedSlots.add(p.subRow);
         }
       }
-      if (!Number.isFinite(minUsedSlot)) minUsedSlot = 0;
+      const sortedUsedSlots = Array.from(usedSlots).sort((a, b) => a - b);
+      const compactSlotMap = new Map<number, number>();
+      sortedUsedSlots.forEach((slot, denseIdx) => compactSlotMap.set(slot, denseIdx));
 
-      let maxSubRows = 1;
+      const maxSubRows = Math.max(1, sortedUsedSlots.length);
       for (const placements of colSlotAssignments.values()) {
         for (const p of placements) {
-          p.subRow -= minUsedSlot;
+          p.subRow = compactSlotMap.get(p.subRow) ?? 0;
           if (p.node.id) assignedSubRow.set(p.node.id, p.subRow);
-          if (p.subRow + 1 > maxSubRows) maxSubRows = p.subRow + 1;
         }
       }
 
@@ -849,6 +852,20 @@ export function buildCollaborationLayout(
         continue;
       }
       if (tgtCol - srcCol >= 3) {
+        const srcRow = assignedSubRow.get(srcId) ?? 0;
+        const tgtRow = assignedSubRow.get(tgtId) ?? 0;
+        if (srcLane === tgtLane && srcRow === tgtRow) {
+          const lanePlan = laneSlotPlans[srcLane];
+          let blocked = false;
+          for (let c = srcCol + 1; c < tgtCol; c++) {
+            const colItems = lanePlan?.colSlotAssignments.get(c) || [];
+            if (colItems.some((item) => item.subRow === srcRow)) {
+              blocked = true;
+              break;
+            }
+          }
+          if (!blocked) continue;
+        }
         const highwayPos: 'bottom' | 'top' = tgtLane >= srcLane ? 'bottom' : 'top';
         const counts = longSpanCountByLane.get(tgtLane) || { bottom: 0, top: 0 };
         const slot = counts[highwayPos];

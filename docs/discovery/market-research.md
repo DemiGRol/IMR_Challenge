@@ -1,6 +1,6 @@
-# Investigación de negocio — borrador (T-01)
+# Investigación de negocio — Discovery (T-01)
 
-- **Estado**: propuesto (pendiente de aprobación humana).
+- **Estado**: aprobado (T-01 — base de alcance MVP).
 - **Origen**: delegación `DEL-01` al especialista `business-analyst` (20/11/2026, 5 búsquedas web enfocadas, solo lectura).
 - **Base**: [challenge.md](../brief/challenge.md) (`REQ-01` a `REQ-06`), esfuerzo total 10–15 h, entrega web pública en opciones gratuitas.
 
@@ -37,7 +37,7 @@
 3. **Edición real en estándar BPMN 2.0 + salida portable:** frente a pizarras genéricas (Miro/Lucidchart), ofrecer edición real con `bpmn-js` Modeler y exportación `.bpmn` estándar.
 4. **Transparencia ante fallos o ambigüedades:** estados claros (carga, error recuperable, reintento) en lugar de fallos silenciosos (`no diagram to display`).
 
-## Alcance MVP / fuera de alcance *(Propuesta — pendiente de aprobación humana)*
+## Alcance MVP / fuera de alcance *(Aprobado para MVP — T-01/T-03)*
 
 ### Hipótesis de propuesta de valor
 *"Una aplicación web ligera y pública que transforma descripciones de procesos de negocio en lenguaje natural en diagramas BPMN 2.0 válidos, legibles y directamente editables en `bpmn.io` en cuestión de segundos, sin registro ni conocimientos previos de XML."*

@@ -1170,3 +1170,67 @@ test('compactBpmnForPrompt and countBpmnStats handle bpmn2 and default-namespace
   assert.ok(!compactedDefault.includes('BPMNDiagram'));
   assert.deepEqual(countBpmnStats(defaultNsXml), { elementCount: 3, gatewayCount: 0, flowCount: 2 });
 });
+
+test('validateAndLayoutBpmn compacts sub-rows for upward cross-lane flows and routes clear same-row long-span flows straight', async () => {
+  const upwardAndClearSkipXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_UpClear" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collab_UC">
+    <bpmn:participant id="Part_UC" name="Sistema" processRef="Proc_UC" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_UC" isExecutable="false">
+    <bpmn:laneSet id="LS_UC">
+      <bpmn:lane id="Lane_Upper" name="Superior">
+        <bpmn:flowNodeRef>Start_U</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Host</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Boundary_U</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Handler</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Handler2</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_JoinU</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_ReturnUp</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_U</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Lower" name="Inferior">
+        <bpmn:flowNodeRef>T_Lower</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_U" name="Inicio"><bpmn:outgoing>FU_1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:task id="T_Host" name="Servicio principal"><bpmn:incoming>FU_1</bpmn:incoming><bpmn:outgoing>F_StraightSkip</bpmn:outgoing></bpmn:task>
+    <bpmn:boundaryEvent id="Boundary_U" name="Fallo" attachedToRef="T_Host"><bpmn:outgoing>FU_B1</bpmn:outgoing><bpmn:errorEventDefinition id="ED_UC" /></bpmn:boundaryEvent>
+    <bpmn:task id="T_Handler" name="Fallback 1"><bpmn:incoming>FU_B1</bpmn:incoming><bpmn:outgoing>FU_B2</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="T_Handler2" name="Fallback 2"><bpmn:incoming>FU_B2</bpmn:incoming><bpmn:outgoing>FU_B3</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="Gw_JoinU"><bpmn:incoming>F_StraightSkip</bpmn:incoming><bpmn:incoming>FU_B3</bpmn:incoming><bpmn:outgoing>FU_Down</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="T_Lower" name="Procesar abajo"><bpmn:incoming>FU_Down</bpmn:incoming><bpmn:outgoing>FU_Up</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="T_ReturnUp" name="Registrar arriba"><bpmn:incoming>FU_Up</bpmn:incoming><bpmn:outgoing>FU_End</bpmn:outgoing></bpmn:task>
+    <bpmn:endEvent id="End_U" name="Fin"><bpmn:incoming>FU_End</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="FU_1" sourceRef="Start_U" targetRef="T_Host" />
+    <bpmn:sequenceFlow id="F_StraightSkip" sourceRef="T_Host" targetRef="Gw_JoinU" />
+    <bpmn:sequenceFlow id="FU_B1" sourceRef="Boundary_U" targetRef="T_Handler" />
+    <bpmn:sequenceFlow id="FU_B2" sourceRef="T_Handler" targetRef="T_Handler2" />
+    <bpmn:sequenceFlow id="FU_B3" sourceRef="T_Handler2" targetRef="Gw_JoinU" />
+    <bpmn:sequenceFlow id="FU_Down" sourceRef="Gw_JoinU" targetRef="T_Lower" />
+    <bpmn:sequenceFlow id="FU_Up" sourceRef="T_Lower" targetRef="T_ReturnUp" />
+    <bpmn:sequenceFlow id="FU_End" sourceRef="T_ReturnUp" targetRef="End_U" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+  const layouted = await validateAndLayoutBpmn(upwardAndClearSkipXml);
+  const laneMatch = layouted.match(
+    /id="Lane_Upper_di"[^>]*>[\s\S]*?<omgdc:Bounds[^>]*height="(\d+)"/
+  );
+  assert.ok(laneMatch, 'Expected Lane_Upper bounds');
+  const laneHeight = Number(laneMatch[1]);
+  assert.ok(
+    laneHeight < 550,
+    `Expected compact Lane_Upper height (< 550) even with upward cross-lane flow, got ${laneHeight}`
+  );
+
+  const straightMatch = layouted.match(/id="F_StraightSkip_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/);
+  assert.ok(straightMatch, 'Expected F_StraightSkip edge');
+  const ys = Array.from(straightMatch[1].matchAll(/y="(-?\d+)"/g)).map((m) => Number(m[1]));
+  assert.ok(ys.length >= 2);
+  assert.equal(
+    new Set(ys).size,
+    1,
+    `Expected straight horizontal edge on clear row for F_StraightSkip, got y=${ys.join(',')}`
+  );
+});
