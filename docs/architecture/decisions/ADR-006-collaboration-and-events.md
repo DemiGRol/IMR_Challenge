@@ -1,7 +1,7 @@
 # ADR-006: Soporte de Colaboración BPMN 2.0 (Pools, Lanes, Message Flows) y Eventos Intermedios
 
 - **Estado**: aprobado (24/11/2026)
-- **Requisitos / Hallazgos**: `REQ-03`–`REQ-05`, V3 (`v1-stress-test.md`), `FUT-04` promovido a P0 para `v0.6.0`.
+- **Requisitos / Contexto**: `REQ-03`–`REQ-05` y hallazgos de pruebas de estrés V1–V3 (promovido a P0 para `v0.6.0`).
 
 ## Contexto y evidencia verificada
 1. En las pruebas V1–V3, el generador no utilizaba Pools, Lanes, Message Flows ni eventos intermedios (temporizadores, mensajes, alertas/escalaciones) porque la allowlist inicial de `validator.ts` y `prompt.ts` los restringía al subconjunto básico MVP.
@@ -16,7 +16,7 @@
    - Colaboración: `Collaboration`, `Participant` (Pools), `LaneSet`, `Lane`, `MessageFlow` (validando que conecte Pools distintos).
    - Eventos, tareas y compuertas: `intermediateCatchEvent`, `intermediateThrowEvent`, `boundaryEvent` (Timer / Error / Message, interruptivo y no interruptivo `cancelActivity="false"`, validando `attachedToRef` hacia una tarea válida y sin flujos entrantes), `eventBasedGateway`, `inclusiveGateway` (split/join), `sendTask`, `receiveTask`, `manualTask`, `scriptTask`, `businessRuleTask`, flujo por defecto (`default="Flow_ID"`), y definiciones estándar (`timerEventDefinition`, `messageEventDefinition`, `errorEventDefinition`, `escalationEventDefinition`, `signalEventDefinition`, `conditionalEventDefinition`, `terminateEventDefinition`).
    - Modos de ejecución de actividades: `standardLoopCharacteristics` (bucle), `multiInstanceLoopCharacteristics` (paralelo) y `multiInstanceLoopCharacteristics isSequential="true"` (secuencial).
-   - Tareas neutras (`task`) cuando no haya evidencia suficiente de intervención humana o automatización (`V1-04`), diferenciación entre resultados desfavorables normales del negocio (`endEvent` convencional) y excepciones técnicas (`errorEventDefinition`), y tarjetas separadas de `recommendations` técnicas de modelado BPMN.
+   - Tareas neutras (`task`) cuando no haya evidencia suficiente de intervención humana o automatización, diferenciación entre resultados desfavorables normales del negocio (`endEvent` convencional) y excepciones técnicas (`errorEventDefinition`), y tarjetas separadas de `recommendations` técnicas de modelado BPMN.
    - Estimación de costos (`telemetry.ts`): tabla de tarifas reales por modelo y región según Google Cloud Vertex AI / Model Garden (`gemini-4-hydrogen`, `gemini-4-neon`, `gemini-2.5-pro`, `gemini-2.5-flash`).
 3. **Exclusiones explícitas en esta versión**:
    - Quedan fuera de alcance en generación automática (mantenidos para evolución futura o edición manual en `bpmn-js`): `SubProcess` expandido, `ComplexGateway`, compuertas instanciadoras basadas en eventos (`instantiate="true"`), eventos `Link`/`Compensation`, flujos condicionales directos desde actividades (`conditionExpression` sin gateway), Artefactos estándar (`DataObject`, `Group`, `TextAnnotation`) y extensiones propietarias GRC (Rol, Aplicación, Norma, Riesgo, Control) para preservar portabilidad estricta OMG BPMN 2.0.

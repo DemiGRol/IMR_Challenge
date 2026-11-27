@@ -35,4 +35,4 @@
 
 ## 7.0 Calidad y Defensa
 - `7.1` Pruebas con escenarios variados, validación de seguridad/XML y revisión independiente → `T-06`
-- `7.2` Entrega reproducible, evidencia final, guion de defensa de 30 min y ensayo de demo → `T-07`, `T-08`
+- `7.2` Entrega reproducible, evidencia final y verificación de despliegue → `T-07`

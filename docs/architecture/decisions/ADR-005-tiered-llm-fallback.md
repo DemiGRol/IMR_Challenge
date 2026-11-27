@@ -1,7 +1,7 @@
 # ADR-005: Fallback de Paridad (Vertex AI ↔ Google AI Studio) y Control de Razonamiento
 
 - **Estado**: aprobado (22/11/2026)
-- **Requisitos / Incidentes**: `REQ-02`, `NFR-03`, `ADR-003`, `INC-07`, `INC-11`, `INC-13`, prueba V2 (`v1-stress-test.md`)
+- **Requisitos / Contexto**: `REQ-02`, `NFR-03`, `ADR-003` y pruebas de estrés V2
 
 ## Contexto y problemática empírica
 Durante las pruebas de estrés V2 con un proceso de compras empresariales (38 elementos, 16 gateways, 47 flujos):
