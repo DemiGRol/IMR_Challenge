@@ -559,8 +559,23 @@ export default function HomePage() {
       });
       return;
     }
+    if (diagramSource !== 'empty') {
+      setConfirmDialog({
+        title: '¿Iniciar un lienzo en blanco?',
+        description:
+          'El diagrama actual y sus supuestos se limpiarán para abrir un lienzo vacío desde cero.',
+        confirmLabel: 'Iniciar en blanco',
+        cancelLabel: 'Cancelar',
+        tone: 'warning',
+        onConfirm: () => {
+          setConfirmDialog(null);
+          applyCreateBlank();
+        },
+      });
+      return;
+    }
     applyCreateBlank();
-  }, [applyCreateBlank, isDirty]);
+  }, [applyCreateBlank, diagramSource, isDirty]);
 
   const generateDiagram = async (requestedMode?: 'fresh' | 'preserve-edits', skipConfirm = false) => {
     if (!isValidLength || loading) {
