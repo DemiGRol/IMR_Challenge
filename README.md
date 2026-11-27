@@ -1,4 +1,4 @@
-# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.3`)
+# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.4`)
 
 Aplicación web que transforma descripciones textuales de procesos de negocio en diagramas **BPMN 2.0** válidos, legibles y editables interactivamente mediante **bpmn.io (`bpmn-js`)**, impulsada por **Vertex AI (GCP)** a través de un patrón **LLM Adapter** con fallback resiliente.
 
@@ -6,7 +6,7 @@ Aplicación web que transforma descripciones textuales de procesos de negocio en
 
 ---
 
-## Características implementadas (`v0.7.3`)
+## Características implementadas (`v0.7.4`)
 - **Descripción en lenguaje natural** (10–4.000 caracteres) con 4 ejemplos precargados (lineal, decisión XOR, paralelismo AND y colaboración con eventos).
 - **Modos de generación `Rápido` (predeterminado) y `Detallado`** vía **Vertex AI (`gemini-4-hydrogen` en `global`)** con fallback a **Google AI Studio** (`ResilientLlmAdapter` con *deadline* compartido), Structured Outputs (`{ bpmnXml, assumptions, recommendations }`) y hasta 1 reintento automático de auto-reparación.
 - **Cobertura BPMN 2.0 ampliada y layouter determinista generalizado**:
@@ -56,7 +56,7 @@ npm run dev
 
 ### Scripts disponibles
 - `npm run dev`: servidor de desarrollo Next.js.
-- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 34 tests).
+- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 35 tests).
 - `npm run typecheck`: verificación estricta de TypeScript (`tsc --noEmit`).
 - `npm run build`: compilación de producción (`next build`).
 - `npm run benchmark`: corrida comparativa de modos (`-- --report-only` regenera el dashboard HTML con las corridas locales).

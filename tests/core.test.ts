@@ -1234,3 +1234,43 @@ test('validateAndLayoutBpmn compacts sub-rows for upward cross-lane flows and ro
     `Expected straight horizontal edge on clear row for F_StraightSkip, got y=${ys.join(',')}`
   );
 });
+
+test('validateAndLayoutBpmn separates bidirectional MessageFlows between the same task and external pool into parallel vertical lanes', async () => {
+  const bidirMsgXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_BidirMF" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:collaboration id="Collab_MF">
+    <bpmn:participant id="Part_App" name="Aplicación" processRef="Proc_MF" />
+    <bpmn:participant id="Part_Ext" name="Proveedor IA" />
+    <bpmn:messageFlow id="MF_Req" name="Solicitud" sourceRef="Task_CallApi" targetRef="Part_Ext" />
+    <bpmn:messageFlow id="MF_Res" name="Respuesta" sourceRef="Part_Ext" targetRef="Task_CallApi" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_MF" isExecutable="false">
+    <bpmn:startEvent id="Start_MF" name="Inicio"><bpmn:outgoing>FMF_1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="Task_CallApi" name="Consultar IA"><bpmn:incoming>FMF_1</bpmn:incoming><bpmn:outgoing>FMF_2</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:endEvent id="End_MF" name="Fin"><bpmn:incoming>FMF_2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="FMF_1" sourceRef="Start_MF" targetRef="Task_CallApi" />
+    <bpmn:sequenceFlow id="FMF_2" sourceRef="Task_CallApi" targetRef="End_MF" />
+  </bpmn:process>
+</bpmn:definitions>`;
+
+  const layouted = await validateAndLayoutBpmn(bidirMsgXml);
+  const taskMatch = layouted.match(
+    /id="Task_CallApi_di"[^>]*>[\s\S]*?<omgdc:Bounds x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/
+  );
+  const reqMatch = layouted.match(/id="MF_Req_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/);
+  const resMatch = layouted.match(/id="MF_Res_di"[^>]*>([\s\S]*?)<\/bpmndi:BPMNEdge>/);
+  assert.ok(taskMatch && reqMatch && resMatch);
+
+  const taskLeft = Number(taskMatch[1]);
+  const taskRight = taskLeft + Number(taskMatch[3]);
+  const reqX = Number(reqMatch[1].match(/<omgdi:waypoint x="(\d+)"/)?.[1]);
+  const resX = Number(resMatch[1].match(/<omgdi:waypoint x="(\d+)"/)?.[1]);
+
+  assert.ok(reqX >= taskLeft && reqX <= taskRight, `Expected MF_Req x=${reqX} within task [${taskLeft}, ${taskRight}]`);
+  assert.ok(resX >= taskLeft && resX <= taskRight, `Expected MF_Res x=${resX} within task [${taskLeft}, ${taskRight}]`);
+  assert.ok(Math.abs(resX - reqX) >= 30, `Expected separated parallel MessageFlow x coords, got reqX=${reqX}, resX=${resX}`);
+
+  const reqLabelX = Number(reqMatch[1].match(/<bpmndi:BPMNLabel>[\s\S]*?x="(-?\d+)"/)?.[1]);
+  const resLabelX = Number(resMatch[1].match(/<bpmndi:BPMNLabel>[\s\S]*?x="(-?\d+)"/)?.[1]);
+  assert.ok(Number.isFinite(reqLabelX) && Number.isFinite(resLabelX) && reqLabelX !== resLabelX);
+});

@@ -1625,6 +1625,29 @@ export function buildCollaborationLayout(
     currentY = poolStartY + poolHeight + POOL_GAP_Y;
   }
 
+  const mfSlotByFlowId = new Map<string, { slotIdx: number; groupCount: number }>();
+  const mfGroups = new Map<string, Array<{ mf: CollabMessageFlow; idx: number; isFromNarrow: boolean }>>();
+  messageFlows.forEach((mf, idx) => {
+    const srcId = mf.sourceRef?.id;
+    const tgtId = mf.targetRef?.id;
+    const src = srcId ? boxes.get(srcId) : undefined;
+    const tgt = tgtId ? boxes.get(tgtId) : undefined;
+    if (!mf.id || !srcId || !tgtId || !src || !tgt) return;
+    const pairKey = [srcId, tgtId].sort().join('||');
+    const list = mfGroups.get(pairKey) || [];
+    list.push({ mf, idx, isFromNarrow: src.w <= 300 });
+    mfGroups.set(pairKey, list);
+  });
+  for (const group of mfGroups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => Number(b.isFromNarrow) - Number(a.isFromNarrow) || a.idx - b.idx);
+    group.forEach((entry, slotIdx) => {
+      if (entry.mf.id) {
+        mfSlotByFlowId.set(entry.mf.id, { slotIdx, groupCount: group.length });
+      }
+    });
+  }
+
   messageFlows.forEach((mf, idx) => {
     const id = mf.id;
     const srcId = mf.sourceRef?.id;
@@ -1642,8 +1665,21 @@ export function buildCollaborationLayout(
     const isSrcWidePool = src.w > 300;
     const isTgtWidePool = tgt.w > 300;
 
+    const mfSlot = mfSlotByFlowId.get(id);
+    const groupCount = mfSlot?.groupCount ?? 1;
+    const slotIdx = mfSlot?.slotIdx ?? 0;
+
     let sx = Math.round(srcCenterX);
     let tx = Math.round(tgtCenterX);
+    if (groupCount >= 2 && !(isSrcWidePool && isTgtWidePool)) {
+      const narrowW = !isSrcWidePool ? src.w : tgt.w;
+      const halfLimit = Math.max(8, Math.floor(narrowW / 2) - 10);
+      const desiredStep = Math.min(44, Math.floor((halfLimit * 2) / Math.max(1, groupCount - 1)));
+      const offsetX = Math.round((slotIdx - (groupCount - 1) / 2) * desiredStep);
+      if (!isSrcWidePool) sx += offsetX;
+      if (!isTgtWidePool) tx += offsetX;
+    }
+
     if (isSrcWidePool && !isTgtWidePool) sx = tx;
     if (isTgtWidePool && !isSrcWidePool) tx = sx;
     if (isSrcWidePool && isTgtWidePool) {
@@ -1749,8 +1785,25 @@ export function buildCollaborationLayout(
     const wpXml = waypoints
       .map((wp) => `        <omgdi:waypoint x="${wp.x}" y="${wp.y}" />`)
       .join('\n');
+    let mfLabelXml = '';
+    if (groupCount >= 2 && mf.name) {
+      const labelAnchorX = waypoints[Math.min(1, waypoints.length - 1)]?.x ?? sx;
+      const midCenter = (groupCount - 1) / 2;
+      const labelW = 92;
+      const labelX =
+        slotIdx < midCenter
+          ? Math.round(labelAnchorX - labelW - 8)
+          : slotIdx > midCenter
+            ? Math.round(labelAnchorX + 8)
+            : Math.round(labelAnchorX - labelW / 2);
+      const labelY = Math.round((sy + ty) / 2 - 14 + (slotIdx % 2 === 0 ? -18 : 12));
+      mfLabelXml =
+        `\n        <bpmndi:BPMNLabel>\n` +
+        `          <omgdc:Bounds x="${labelX}" y="${labelY}" width="${labelW}" height="28" />\n` +
+        `        </bpmndi:BPMNLabel>`;
+    }
     edgeXmlParts.push(
-      `      <bpmndi:BPMNEdge id="${id}_di" bpmnElement="${id}">\n${wpXml}\n      </bpmndi:BPMNEdge>`
+      `      <bpmndi:BPMNEdge id="${id}_di" bpmnElement="${id}">\n${wpXml}${mfLabelXml}\n      </bpmndi:BPMNEdge>`
     );
   });
 

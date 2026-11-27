@@ -1,6 +1,6 @@
-# Plan de Validación y Evidencia (`as-built` · `v0.7.3`)
+# Plan de Validación y Evidencia (`as-built` · `v0.7.4`)
 
-- **Estado**: `verificado` (`v0.7.3`, actualizado el `26/11/2026`).
+- **Estado**: `verificado` (`v0.7.4`, actualizado el `26/11/2026`).
 - **Estrategia**: separación estricta entre **pruebas deterministas unitarias/regresión con dobles locales** (`tests/core.test.ts`, `scripts/spike-bpmn.ts`) y **corridas reales contra Vertex AI / Google AI Studio** (`scripts/benchmark-modes.ts`, verificación en vivo).
 
 ## Casos ejecutados y verificados
@@ -11,7 +11,7 @@
 | **TC-02** | Validación XML y seguridad (`REQ-03`) | Payloads con `<!DOCTYPE>`, `<!ENTITY>`, `<script>`, handlers DOM, IDs no-`NCName` (manteniendo textos benignos como `online=activo`) | Bloqueo estricto vía `BpmnValidationError` antes y después del layout | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
 | **TC-03** | Subconjunto y referencias BPMN (`REQ-03`) | IDs duplicados, `SubProcess`, `MessageFlow` intra-pool, `BoundaryEvent` con `attachedToRef` inválido o flujo entrante | Rechazo determinista con mensaje accionable para auto-reparación | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
 | **TC-04** | Layout determinista simple + fallback (`REQ-04`) | Procesos lineales, XOR, paralelos y grafos cíclicos donde falla `bpmn-auto-layout` (`INC-14`) | `BPMNDiagram` DI válido generado por `bpmn-auto-layout` o `buildFallbackLayout()` sin re-llamar al LLM | Spike + Unitaria | verificado | `scripts/spike-bpmn.ts` (`3/3`), `tests/core.test.ts` |
-| **TC-05** | Colaboración, eventos y puertos (`REQ-04`/`05`) | Pools *white/black-box*, Lanes, `BoundaryEvent` múltiples, `InclusiveGateway` + `default`, flujos ascendentes entre carriles, retornos y saltos largos | Puertos diferenciados entrada/salida, compactación densa de sub-filas, saltos rectos despejados y autopistas perimetrales | Regresión geométrica | verificado | `tests/core.test.ts` (`34/34` `npm test`) + `separateOverlappingEdges` |
+| **TC-05** | Colaboración, eventos y puertos (`REQ-04`/`05`) | Pools *white/black-box*, Lanes, `BoundaryEvent` múltiples, `InclusiveGateway` + `default`, flujos ascendentes entre carriles, `MessageFlow` paralelos, retornos y saltos largos | Puertos diferenciados entrada/salida, compactación densa, `MessageFlow` ida/vuelta separados, saltos rectos despejados y autopistas perimetrales | Regresión geométrica | verificado | `tests/core.test.ts` (`35/35` `npm test`) + `separateOverlappingEdges` |
 | **TC-06** | Compatibilidad `.bpmn` multi-prefijo | Importación/compactación XML con prefijos `bpmn:`, `bpmn2:` o namespace por defecto sin prefijo | `compactBpmnForPrompt()` y `countBpmnStats()` conservan semántica sin `BPMNDiagram` | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
 | **TC-07** | Caché y aislamiento de modos | Misma descripción con espacios/mayúsculas distintos; aislamiento `fast` vs `detailed` y modelo | Reutilización segura por hash SHA-256 versionado (`CACHE_VERSION`) | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
 | **TC-08** | Rate limit y anti-spoofing IP | Ráfaga >10 req/min y headers `x-vercel-forwarded-for`, `x-real-ip`, `x-forwarded-for` | Bloqueo `429` en solicitud 11, store acotado FIFO (`MAX_STORE_SIZE = 2000`) | Unitaria automatizada | verificado | `tests/core.test.ts` (`npm test`) |
