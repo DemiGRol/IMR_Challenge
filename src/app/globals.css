@@ -1276,10 +1276,14 @@ textarea:focus-visible,
 }
 
 /* Marcadores de supuestos en BPMN (Light + Dark) */
+.djs-shape.bpmn-has-assumption .djs-visual {
+  filter: drop-shadow(0 0 4px rgba(217, 119, 6, 0.28));
+}
+
 .djs-shape.bpmn-has-assumption .djs-visual > :nth-child(1) {
   stroke: var(--bpmn-assumption-stroke) !important;
-  stroke-width: 2px !important;
-  stroke-dasharray: 5 3 !important;
+  stroke-width: 2.4px !important;
+  fill: #fffbeb !important;
 }
 
 .djs-shape.bpmn-assumption-highlight .djs-visual {
@@ -1289,7 +1293,6 @@ textarea:focus-visible,
 .djs-shape.bpmn-assumption-highlight .djs-visual > :nth-child(1) {
   stroke: var(--bpmn-highlight-stroke) !important;
   stroke-width: 3.5px !important;
-  stroke-dasharray: none !important;
   fill: var(--bpmn-highlight-fill) !important;
 }
 
@@ -1491,10 +1494,13 @@ textarea:focus-visible,
   fill: var(--canvas-bg) !important;
 }
 
+[data-theme='dark'] .djs-shape.bpmn-has-assumption .djs-visual {
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.38));
+}
+
 [data-theme='dark'] .djs-shape.bpmn-has-assumption .djs-visual > :nth-child(1):not(text):not([style*='fill: none']) {
   stroke: var(--bpmn-assumption-stroke) !important;
-  stroke-width: 2.2px !important;
-  stroke-dasharray: 5 3 !important;
+  stroke-width: 2.4px !important;
   fill: #26231a !important;
 }
 
@@ -1505,7 +1511,6 @@ textarea:focus-visible,
 [data-theme='dark'] .djs-shape.bpmn-assumption-highlight .djs-visual > :nth-child(1):not(text):not([style*='fill: none']) {
   stroke: var(--bpmn-highlight-stroke) !important;
   stroke-width: 3.5px !important;
-  stroke-dasharray: none !important;
   fill: var(--bpmn-highlight-fill) !important;
 }
 

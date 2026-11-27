@@ -7,6 +7,6 @@ Disponibilidad horaria personal: ~10–15 h totales hasta el 27/11/2026. Presupu
 Preguntas IMR usadas: 0 enviadas (Q-01 registrada como propuesta en `docs/brief/questions.md`).
 Decisiones aprobadas: T-01, T-02, T-03 y T-04 verificados; Git Flow activo (`master` + `develop` + `feat/mvp`); delegación paralela aprobada para T-05.
 Bloqueos: ninguno.
-Último incremento verificado: **`v0.7.3` (`T-12` + `T-08`) verificado** — fix general en `collaboration-layout.ts` (eliminación de sentinela `99` en flujos ascendentes entre carriles con compactación densa de sub-filas + ruteo recto en saltos largos sin obstáculos), test de regresión #34, diagramas Mermaid *as-built* (`dfd-0`, `architecture`, `sequence`, `states`), Threat Model + contratos `as-built`, Meta-demo en `docs/defense/README.md` y consistencia documental completa; `npm test` 34/34 OK, `tsc --noEmit` 0 errores, `next build` OK.
+Último incremento verificado: **`v0.7.4` (`T-12` + `T-08`) verificado** — cierre `v0.7.4`: resaltado de supuestos sin alterar `stroke-dasharray` nativo de BPMN 2.0 (color + halo `drop-shadow`) y separación horizontal paralela de `MessageFlow` ida/vuelta entre el mismo par `{nodo, pool}` con etiquetas desplazadas; `npm test` 35/35 OK, `tsc --noEmit` 0 errores, `next build` OK.
 Siguiente paso propuesto: verificación final en la URL pública de Vercel (`https://imr-challenge.vercel.app/` con Fluid Compute activo) y presentación en entrevista (30 min).
 Actualizar con decisiones, links, bloqueos y hechos duraderos; no volcar el chat completo.

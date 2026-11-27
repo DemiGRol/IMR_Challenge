@@ -1,11 +1,11 @@
 # Roadmap de Mejoras Futuras (Post-Challenge / Fase 2)
 
-- **Propósito**: centralizar qué capacidades propuestas ya fueron entregadas hasta `v0.7.3` y qué evoluciones reales quedan priorizadas para una fase productiva empresarial (IMR).
+- **Propósito**: centralizar qué capacidades propuestas ya fueron entregadas hasta `v0.7.4` y qué evoluciones reales quedan priorizadas para una fase productiva empresarial (IMR).
 - **Estado**: documento vivo (actualizado el `26/11/2026`).
 
 ---
 
-## 1. Capacidades del roadmap inicial ya implementadas (`v0.5.0` → `v0.7.3`)
+## 1. Capacidades del roadmap inicial ya implementadas (`v0.5.0` → `v0.7.4`)
 
 | ID | Capacidad entregada | Versión | Implementación verificada |
 |---|---|---|---|
@@ -14,7 +14,7 @@
 | **FUT-03** | Separación de carriles, evitación de obstáculos y ordenamiento multi-capa | `v0.5.0` → `v0.7.3` | `fallback-layout.ts`, `layout-postprocess.ts` y reglas generales en `collaboration-layout.ts` (compactación densa de sub-filas, entradas/salidas múltiples, saltos rectos despejados y autopistas perimetrales). |
 | **FUT-04** | Colaboración BPMN 2.0 (Pools, Lanes, MessageFlows) y eventos avanzados | `v0.6.0` | Pools *white/black-box*, `BoundaryEvent` (interruptivos y no interruptivos), `EventBasedGateway`, `InclusiveGateway` con `default`, tareas tipadas y bucles/multi-instancia (`ADR-006`). |
 | **FUT-06** | Inspector de XML BPMN 2.0 en vivo + importación/exportación `.bpmn`/`.svg` | `v0.5.0` / `v0.7.1` | Visor colapsable con copia al portapapeles, validación `NCName` y soporte multi-prefijo (`bpmn:` / `bpmn2:` / default namespace). |
-| **FUT-08** | Suite automatizada + benchmark reproducible + auditoría de seguridad | `v0.6.0` / `v0.7.3` | `tests/core.test.ts` (34 tests unitarios/regresión) + `scripts/benchmark-modes.ts` + dashboard unificado (`dashboard.html`). |
+| **FUT-08** | Suite automatizada + benchmark reproducible + auditoría de seguridad | `v0.6.0` / `v0.7.4` | `tests/core.test.ts` (35 tests unitarios/regresión) + `scripts/benchmark-modes.ts` + dashboard unificado (`dashboard.html`). |
 | **FUT-10** | Caché SHA-256 versionada + refinamiento preservando ediciones (`preserve-edits`) + autosave local | `v0.5.0` → `v0.7.2` | `src/lib/cache.ts`, `iterationMode`, `loadRevision` y autoguardado local continuo vía `diagramRevision` en `localStorage`. |
 | **FUT-12** | Auditoría semántica bajo demanda sin regenerar el dibujo (`POST /api/analyze-bpmn`) | `v0.7.0` | Re-análisis sobre diagrama generado, editado o `.bpmn` importado, excluyendo preguntas resueltas (`resolvedQuestions`). |
 

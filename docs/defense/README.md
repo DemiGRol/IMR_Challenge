@@ -1,4 +1,4 @@
-# Defensa técnica — IMR BPMN Studio (`v0.7.3`, 30 min)
+# Defensa técnica — IMR BPMN Studio (`v0.7.4`, 30 min)
 
 > Guía operativa para la entrevista técnica basada exclusivamente en artefactos, pruebas y decisiones verificadas del repositorio (`README.md`, `docs/architecture/decisions/ADR-001..006`, `docs/diagrams/*`, `docs/quality/benchmark/report.md`, `docs/defense/issues-and-lessons.md` y `tests/core.test.ts`).
 
@@ -11,7 +11,7 @@
 | **1. Problema y decisiones clave** | 4 min | Mostrar criterio de arquitectura y alcance MVP sin sobre-ingeniería. | Consigna ([challenge.md](../brief/challenge.md)) + 4 ADRs base + por qué LLM semántico separado de DI determinista (`ADR-001`). |
 | **2. Demo guiada en vivo** | 9 min | Demostrar todo el ciclo de valor (*Describir → Modelar → Auditar → Editar → Exportar*). | URL en Vercel (`https://imr-challenge.vercel.app/`) o `localhost:3000` con modo claro/oscuro, Tour y ejemplo complejo. |
 | **3. Arquitectura y resiliencia** | 7 min | Explicar qué pasa bajo el capó al generar, validar y auditar. | [architecture.md](../diagrams/architecture.md), [sequence.md](../diagrams/sequence.md), [states.md](../diagrams/states.md), `ResilientLlmAdapter` (`ADR-005`), `validator.ts` y `collaboration-layout.ts`. |
-| **4. Evidencia empírica y seguridad** | 5 min | Respaldar decisiones con métricas reales y control de calidad. | Benchmark 18/18 (`dashboard.html`), costos USD, 34 tests (`npm test`) y cierre de auditoría (`INC-17`). |
+| **4. Evidencia empírica y seguridad** | 5 min | Respaldar decisiones con métricas reales y control de calidad. | Benchmark 18/18 (`dashboard.html`), costos USD, 35 tests (`npm test`) y cierre de auditoría (`INC-17`). |
 | **5. Preguntas IMR y Roadmap** | 5 min | Responder preguntas técnicas y proyectar evolución productiva. | [roadmap-future.md](../roadmap-future.md) (qué ya se cerró vs. Redis, Auth, MCP Server, inline answers). |
 
 ---
@@ -61,8 +61,8 @@
 
 ## 4. Pruebas reales, métricas verificadas y limitaciones
 
-- **Pruebas automatizadas (`npm test`)**: **34/34 pruebas** aprobadas sobre `validator.ts`, `collaboration-layout.ts`, `fallback-layout.ts`, `layout-postprocess.ts`, `cache.ts`, `rate-limit.ts`, `telemetry.ts` y `ResilientLlmAdapter` (incluye tests de inyección por entidades XML, `NCName`, puertos convergentes/divergentes, compactación densa entre carriles ascendentes, saltos rectos despejados y failovers).
-- **Compilación y tipos**: `tsc --noEmit` (**0 errores**) y `next build` limpio (`115 kB` First Load JS en `/`, cierre UX/UI `v0.7.2` + fix de layout `v0.7.3`).
+- **Pruebas automatizadas (`npm test`)**: **35/35 pruebas** aprobadas sobre `validator.ts`, `collaboration-layout.ts`, `fallback-layout.ts`, `layout-postprocess.ts`, `cache.ts`, `rate-limit.ts`, `telemetry.ts` y `ResilientLlmAdapter` (incluye tests de inyección por entidades XML, `NCName`, puertos convergentes/divergentes, compactación densa entre carriles ascendentes, `MessageFlow` paralelos y failovers).
+- **Compilación y tipos**: `tsc --noEmit` (**0 errores**) y `next build` limpio (`115 kB` First Load JS en `/`, cierres `v0.7.2`–`v0.7.4`).
 - **Benchmark comparativo de modos (`docs/quality/benchmark/report.md`)**: **18/18 corridas exitosas** (3 escenarios × 2 modos × 3 repeticiones), costo total medido de **`USD 0.7750`**, comparando latencia, tokens (`thinkingTokens`), reparaciones y detección de supuestos entre `Rápido` (`LOW`) y `Detallado` (`MEDIUM`).
 - **Limitaciones conscientes (MVP stateless)**: caché, rate-limit y telemetría viven en memoria por instancia serverless (sin DB ni auth); `SubProcess` y `ComplexGateway` quedan fuera del subconjunto BPMN; en Vercel Hobby se requiere **Fluid Compute** activo para sostener `maxDuration = 300` / `120` (sin él recorta a `60 s`).
 
