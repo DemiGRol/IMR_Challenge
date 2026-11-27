@@ -1,4 +1,4 @@
-# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.4`)
+# IMR BPMN Studio — Generador de Procesos BPMN 2.0 (`v0.7.5`)
 
 Aplicación web que transforma descripciones textuales de procesos de negocio en diagramas **BPMN 2.0** válidos, legibles y editables interactivamente mediante **bpmn.io (`bpmn-js`)**, impulsada por **Vertex AI (GCP)** a través de un patrón **LLM Adapter** con fallback resiliente.
 
@@ -6,7 +6,7 @@ Aplicación web que transforma descripciones textuales de procesos de negocio en
 
 ---
 
-## Características implementadas (`v0.7.4`)
+## Características implementadas (`v0.7.5`)
 - **Descripción en lenguaje natural** (10–4.000 caracteres) con 4 ejemplos precargados (lineal, decisión XOR, paralelismo AND y colaboración con eventos).
 - **Modos de generación `Rápido` (predeterminado) y `Detallado`** vía **Vertex AI (`gemini-4-hydrogen` en `global`)** con fallback a **Google AI Studio** (`ResilientLlmAdapter` con *deadline* compartido), Structured Outputs (`{ bpmnXml, assumptions, recommendations }`) y hasta 1 reintento automático de auto-reparación.
 - **Cobertura BPMN 2.0 ampliada y layouter determinista generalizado**:
@@ -16,7 +16,7 @@ Aplicación web que transforma descripciones textuales de procesos de negocio en
 - **Auditoría e iteración *human-in-the-loop***: supuestos estructurados por impacto con resaltado bidireccional en el lienzo, seguimiento (*Marcar como resuelto* / *Reabrir*), recomendaciones técnicas BPMN, re-análisis en vivo sin sobrescribir el dibujo (`POST /api/analyze-bpmn`) y refinamiento conservando ediciones manuales (`preserve-edits`).
 - **UI/UX renovada y editor `bpmn-js` avanzado**:
   - Encabezado con flujo en 3 pasos (*Describir → Modelar → Auditar*), **modo claro/oscuro** con transición animada y estilado SVG nativo para `bpmn-js`, selector de tamaño de texto (`A A A` chico/mediano/grande) y **Product Tour** interactivo de 5 pasos.
-  - Barra contextual anclada sobre actividades con múltiples eventos adjuntos para reordenarlos adaptando sus flujos, multiselección con **`Ctrl / Cmd + clic`** para mover bloques con ajuste automático de flujos externos, halo cartográfico en etiquetas, autoguardado local en navegador, cancelación cooperativa de generación, importación/exportación **`.bpmn`** (multi-prefijo) / **`.svg`** e inspector XML.
+  - Barra contextual anclada sobre actividades con múltiples eventos adjuntos para reordenarlos adaptando sus flujos, multiselección con **`Ctrl / Cmd + clic`** para mover bloques con ajuste automático de flujos externos, halo cartográfico en etiquetas, autoguardado local en navegador, cancelación cooperativa cliente/servidor (`AbortSignal`), modales de confirmación accesibles (`ConfirmDialog`), importación/exportación **`.bpmn`** (multi-prefijo) / **`.svg`** e inspector XML.
 - **Seguridad y observabilidad**: validación `NCName` de identificadores XML y re-verificación post-layout, headers HTTP de seguridad, rate limiting por IP con protección anti-spoofing y cota en memoria, telemetría estructurada con estimación de costos USD y dashboard unificado ([dashboard.html](docs/quality/benchmark/dashboard.html) + `GET /api/telemetry` protegido en Vercel).
 
 ---
@@ -56,7 +56,7 @@ npm run dev
 
 ### Scripts disponibles
 - `npm run dev`: servidor de desarrollo Next.js.
-- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 35 tests).
+- `npm test`: suite de pruebas unitarias (`node --test --experimental-strip-types tests/core.test.ts`, 36 tests).
 - `npm run typecheck`: verificación estricta de TypeScript (`tsc --noEmit`).
 - `npm run build`: compilación de producción (`next build`).
 - `npm run benchmark`: corrida comparativa de modos (`-- --report-only` regenera el dashboard HTML con las corridas locales).
@@ -75,8 +75,6 @@ npm run dev
   - [ADR-005](docs/architecture/decisions/ADR-005-tiered-llm-fallback.md): Estrategia de fallback Vertex AI → Google AI Studio.
   - [ADR-006](docs/architecture/decisions/ADR-006-collaboration-and-events.md): Colaboración BPMN 2.0, eventos y layout de swimlanes.
 - **Calidad, UX y benchmark**: [test-plan.md](docs/quality/test-plan.md), [ux/README.md](docs/ux/README.md), [report.md](docs/quality/benchmark/report.md) y [dashboard.html](docs/quality/benchmark/dashboard.html).
-- **Bitácora de incidentes y aprendizajes**: [docs/defense/issues-and-lessons.md](docs/defense/issues-and-lessons.md).
-- **Roadmap futuro**: [docs/roadmap-future.md](docs/roadmap-future.md).
 
 ---
 

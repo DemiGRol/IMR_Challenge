@@ -168,11 +168,15 @@ export async function POST(req: NextRequest) {
     if (hasVertex) providers.push(new VertexAiProvider());
     if (hasStudio) providers.push(new GoogleAiStudioProvider());
     const adapter = new ResilientLlmAdapter(providers, 180_000);
-    let result = await adapter.generate({
-      processDescription: parsed.data.processDescription,
-      previousBpmnXml: compactedPreviousXml,
-      mode,
-    });
+    let result = await adapter.generate(
+      {
+        processDescription: parsed.data.processDescription,
+        previousBpmnXml: compactedPreviousXml,
+        mode,
+      },
+      undefined,
+      req.signal
+    );
 
     let layoutedXml: string;
     let totalUsage: TokenUsage | undefined = result.usage;
@@ -182,6 +186,15 @@ export async function POST(req: NextRequest) {
     } catch (validationErr) {
       if (!(validationErr instanceof BpmnValidationError)) throw validationErr;
       initialValidationError = validationErr.message;
+
+      if (req.signal.aborted) {
+        throw new LlmServiceError(
+          'Solicitud cancelada por el usuario.',
+          499,
+          'CLIENT_ABORTED',
+          false
+        );
+      }
 
       const remainingMs = TOTAL_BUDGET_MS - (performance.now() - startedAt);
       if (remainingMs < MIN_REPAIR_BUDGET_MS) {
@@ -197,7 +210,8 @@ export async function POST(req: NextRequest) {
           repairFeedback: validationErr.message,
           mode,
         },
-        Math.round(remainingMs)
+        Math.round(remainingMs),
+        req.signal
       );
       totalUsage = mergeUsage(totalUsage, result.usage);
       layoutedXml = await validateAndLayoutBpmn(result.bpmnXml);

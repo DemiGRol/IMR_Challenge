@@ -1,6 +1,6 @@
-# UX/UI — Diseño e Interacción (`as-built` · `v0.7.3`)
+# UX/UI — Diseño e Interacción (`as-built` · `v0.7.5`)
 
-- **Estado**: `as-built` (`v0.7.3`, verificado tras auditoría UX/UI el `26/11/2026`).
+- **Estado**: `as-built` (`v0.7.5`, verificado tras auditoría UX/UI el `26/11/2026`).
 - **Alcance**: especificación real de interfaz, recorridos, accesibilidad y controles sobre `bpmn-js@18` en [page.tsx](../../src/app/page.tsx), [BpmnEditor.tsx](../../src/components/BpmnEditor.tsx), [ProductTour.tsx](../../src/components/ProductTour.tsx) y [globals.css](../../src/app/globals.css).
 
 ---
@@ -24,4 +24,4 @@
 
 ## 3. Accesibilidad y Responsive
 - **Responsive**: breakpoint desktop compacto (`<= 1240px` con `flex-wrap`) y móvil/tablet (`<= 900px` con `height: 100dvh`, barra de herramientas deslizable y ocultado de etiquetas secundarias en stepper conservando `aria-label`).
-- **Accesibilidad (`v0.7.2`)**: teclado aislado dentro de `.bpmn-container` (`:focus-visible`), soporte completo de teclado en tarjetas de supuestos (`e.target === e.currentTarget`, `aria-expanded`), overlay `importError` con `role="alert"` y botón **Cerrar**, contraste AA en `.primary-btn` en modo oscuro y guía interactiva (`ProductTour`) de 5 pasos con `scrollIntoView` y cierre por `Escape`.
+- **Accesibilidad y diálogos (`v0.7.2`–`v0.7.5`)**: teclado aislado dentro de `.bpmn-container` (`:focus-visible`), modales `ConfirmDialog` propios (`role="alertdialog"`, foco inicial en *Seguir editando*, cierre con `Escape`) en reemplazo de `window.confirm`, soporte de teclado en tarjetas de supuestos (`e.target === e.currentTarget`, `aria-expanded`), overlay `importError` con `role="alert"` y botón **Cerrar**, contraste AA en `.primary-btn` en modo oscuro y guía interactiva (`ProductTour`) de 5 pasos con `scrollIntoView`.

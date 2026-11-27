@@ -7,8 +7,25 @@ import {
   LlmServiceError,
 } from './types.ts';
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(
+      new LlmServiceError('Solicitud cancelada por el usuario.', 499, 'CLIENT_ABORTED', false)
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        new LlmServiceError('Solicitud cancelada por el usuario.', 499, 'CLIENT_ABORTED', false)
+      );
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 const MIN_FALLBACK_BUDGET_MS = 10_000;
@@ -44,13 +61,23 @@ export class ResilientLlmAdapter {
 
   async generate(
     input: GenerateBpmnInput,
-    overrideTimeoutMs?: number
+    overrideTimeoutMs?: number,
+    externalSignal?: AbortSignal
   ): Promise<LlmGenerateResult> {
     const effectiveTimeout = overrideTimeoutMs ?? this.timeoutMs;
     const deadline = Date.now() + effectiveTimeout;
     let lastError: unknown = null;
 
     for (let index = 0; index < this.providers.length; index++) {
+      if (externalSignal?.aborted) {
+        throw new LlmServiceError(
+          'Solicitud cancelada por el usuario.',
+          499,
+          'CLIENT_ABORTED',
+          false
+        );
+      }
+
       const remaining = deadline - Date.now();
       if (index > 0 && remaining < MIN_FALLBACK_BUDGET_MS) {
         break;
@@ -64,7 +91,10 @@ export class ResilientLlmAdapter {
         remaining
       );
       const t0 = performance.now();
-      const signal = AbortSignal.timeout(attemptTimeout);
+      const timeoutSignal = AbortSignal.timeout(attemptTimeout);
+      const signal = externalSignal
+        ? AbortSignal.any([timeoutSignal, externalSignal])
+        : timeoutSignal;
 
       try {
         const raw = await provider.generate(input, signal);
@@ -84,6 +114,14 @@ export class ResilientLlmAdapter {
           },
         };
       } catch (err) {
+        if (externalSignal?.aborted) {
+          throw new LlmServiceError(
+            'Solicitud cancelada por el usuario.',
+            499,
+            'CLIENT_ABORTED',
+            false
+          );
+        }
         lastError = err;
         const isLast = index === this.providers.length - 1;
         const isTransient = !(err instanceof LlmServiceError) || err.retryable;
@@ -91,7 +129,7 @@ export class ResilientLlmAdapter {
 
         if (!isLast && isTransient && remainingAfter > MIN_FALLBACK_BUDGET_MS + this.retryDelayMs) {
           if (this.retryDelayMs > 0) {
-            await sleep(this.retryDelayMs);
+            await sleep(this.retryDelayMs, externalSignal);
           }
           continue;
         }
@@ -117,7 +155,8 @@ export class ResilientLlmAdapter {
 
   async analyze(
     input: AnalyzeBpmnInput,
-    overrideTimeoutMs?: number
+    overrideTimeoutMs?: number,
+    externalSignal?: AbortSignal
   ): Promise<LlmAnalyzeResult> {
     const effectiveTimeout = overrideTimeoutMs ?? this.timeoutMs;
     const capable = this.providers.filter((p) => typeof p.analyze === 'function');
@@ -134,6 +173,15 @@ export class ResilientLlmAdapter {
     let lastError: unknown = null;
 
     for (let index = 0; index < capable.length; index++) {
+      if (externalSignal?.aborted) {
+        throw new LlmServiceError(
+          'Solicitud cancelada por el usuario.',
+          499,
+          'CLIENT_ABORTED',
+          false
+        );
+      }
+
       const remaining = deadline - Date.now();
       if (index > 0 && remaining < MIN_FALLBACK_BUDGET_MS) {
         break;
@@ -147,7 +195,10 @@ export class ResilientLlmAdapter {
         remaining
       );
       const t0 = performance.now();
-      const signal = AbortSignal.timeout(attemptTimeout);
+      const timeoutSignal = AbortSignal.timeout(attemptTimeout);
+      const signal = externalSignal
+        ? AbortSignal.any([timeoutSignal, externalSignal])
+        : timeoutSignal;
 
       try {
         const raw = await provider.analyze!(input, signal);
@@ -164,6 +215,14 @@ export class ResilientLlmAdapter {
           },
         };
       } catch (err) {
+        if (externalSignal?.aborted) {
+          throw new LlmServiceError(
+            'Solicitud cancelada por el usuario.',
+            499,
+            'CLIENT_ABORTED',
+            false
+          );
+        }
         lastError = err;
         const isLast = index === capable.length - 1;
         const isTransient = !(err instanceof LlmServiceError) || err.retryable;
@@ -171,7 +230,7 @@ export class ResilientLlmAdapter {
 
         if (!isLast && isTransient && remainingAfter > MIN_FALLBACK_BUDGET_MS + this.retryDelayMs) {
           if (this.retryDelayMs > 0) {
-            await sleep(this.retryDelayMs);
+            await sleep(this.retryDelayMs, externalSignal);
           }
           continue;
         }

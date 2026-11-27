@@ -1274,3 +1274,41 @@ test('validateAndLayoutBpmn separates bidirectional MessageFlows between the sam
   const resLabelX = Number(resMatch[1].match(/<bpmndi:BPMNLabel>[\s\S]*?x="(-?\d+)"/)?.[1]);
   assert.ok(Number.isFinite(reqLabelX) && Number.isFinite(resLabelX) && reqLabelX !== resLabelX);
 });
+
+test('ResilientLlmAdapter aborts immediately on external client signal without triggering fallback', async () => {
+  const controller = new AbortController();
+  let fallbackCalled = false;
+
+  const slowPrimary: LlmProvider = {
+    name: 'vertex-ai',
+    model: 'primary',
+    generate(_input, signal) {
+      return new Promise((_, reject) => {
+        signal.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true }
+        );
+      });
+    },
+  };
+
+  const backupProvider: LlmProvider = {
+    name: 'google-ai-studio',
+    model: 'fallback',
+    async generate() {
+      fallbackCalled = true;
+      return { bpmnXml: VALID_LINEAR_XML, assumptions: [], recommendations: [] };
+    },
+  };
+
+  const adapter = new ResilientLlmAdapter([slowPrimary, backupProvider], 60_000, 0);
+  setTimeout(() => controller.abort(), 15);
+
+  await assert.rejects(
+    () => adapter.generate({ processDescription: 'Demo', mode: 'fast' }, undefined, controller.signal),
+    (err: unknown) =>
+      err instanceof LlmServiceError && err.code === 'CLIENT_ABORTED' && err.retryable === false
+  );
+  assert.equal(fallbackCalled, false);
+});

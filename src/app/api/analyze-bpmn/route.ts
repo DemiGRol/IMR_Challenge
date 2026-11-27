@@ -65,12 +65,16 @@ export async function POST(req: NextRequest) {
     if (hasStudio) providers.push(new GoogleAiStudioProvider());
 
     const adapter = new ResilientLlmAdapter(providers, 95_000);
-    const result = await adapter.analyze({
-      currentBpmnXml: compactedXml,
-      processDescription: parsed.data.processDescription,
-      resolvedQuestions: parsed.data.resolvedQuestions,
-      mode: parsed.data.mode,
-    });
+    const result = await adapter.analyze(
+      {
+        currentBpmnXml: compactedXml,
+        processDescription: parsed.data.processDescription,
+        resolvedQuestions: parsed.data.resolvedQuestions,
+        mode: parsed.data.mode,
+      },
+      undefined,
+      req.signal
+    );
 
     const totalLatencyMs = Math.round(performance.now() - startedAt);
     logGenerationTelemetry({

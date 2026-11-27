@@ -6,6 +6,16 @@ coverage/
 .next/
 dist/
 __pycache__/
-.agents/runs/
 private/
 docs/quality/telemetry/live-events.jsonl
+
+# Material interno de entrevista y orquestación (solo local)
+.agents/
+AGENTS.md
+COORDINATOR.md
+docs/defense/
+docs/discovery/
+docs/roadmap-future.md
+docs/backlog.md
+docs/brief/questions.md
+docs/quality/v1-stress-test.md
