@@ -15,6 +15,7 @@ import {
   SunIcon,
 } from '@/components/Icons';
 import { PROCESS_EXAMPLES } from '@/components/ProcessExamples';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import ProductTour, { TOUR_STORAGE_KEY } from '@/components/ProductTour';
 
 const BpmnEditor = dynamic(() => import('@/components/BpmnEditor'), {
@@ -66,6 +67,16 @@ interface GenerateResponse {
 type DiagramSource = 'empty' | 'ai' | 'blank' | 'imported';
 type SidebarTab = 'description' | 'assumptions';
 type GenerationMode = 'detailed' | 'fast';
+
+interface ConfirmDialogState {
+  title: string;
+  description: string;
+  detail?: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'warning';
+  onConfirm: () => void;
+}
 
 function renderHighlightedExcerpt(fullText: string, excerpt?: string) {
   const cleanExcerpt = excerpt?.trim();
@@ -140,6 +151,7 @@ export default function HomePage() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [tourOpen, setTourOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const xmlGetterRef = useRef<(() => Promise<string | null>) | null>(null);
   const pendingImportRef = useRef<{ filename: string; prevSource: DiagramSource } | null>(null);
@@ -456,19 +468,34 @@ export default function HomePage() {
     }, 40);
   };
 
-  const handleImportBpmn = useCallback(
+  const applyImportBpmn = useCallback(
     (xml: string, filename: string) => {
-      if (
-        isDirty &&
-        !window.confirm('Tenés cambios manuales en el diagrama actual. ¿Querés reemplazarlo?')
-      ) {
-        return;
-      }
       pendingImportRef.current = { filename, prevSource: diagramSource };
       setBpmnXml(xml);
       setLoadRevision((prev) => prev + 1);
     },
-    [diagramSource, isDirty]
+    [diagramSource]
+  );
+
+  const handleImportBpmn = useCallback(
+    (xml: string, filename: string) => {
+      if (isDirty) {
+        setConfirmDialog({
+          title: '¿Reemplazar el diagrama actual?',
+          description: `Tenés ediciones manuales sin consolidar. Si importás «${filename}», se descartarán los cambios del lienzo actual.`,
+          confirmLabel: 'Reemplazar diagrama',
+          cancelLabel: 'Seguir editando',
+          tone: 'warning',
+          onConfirm: () => {
+            setConfirmDialog(null);
+            applyImportBpmn(xml, filename);
+          },
+        });
+        return;
+      }
+      applyImportBpmn(xml, filename);
+    },
+    [applyImportBpmn, isDirty]
   );
 
   const handleImportResult = useCallback(
@@ -496,13 +523,7 @@ export default function HomePage() {
     [showToast]
   );
 
-  const handleCreateBlank = useCallback(() => {
-    if (
-      isDirty &&
-      !window.confirm('Tenés cambios manuales en el diagrama actual. ¿Querés iniciar uno en blanco?')
-    ) {
-      return;
-    }
+  const applyCreateBlank = useCallback(() => {
     try {
       window.localStorage.removeItem(SESSION_DRAFT_KEY);
     } catch {
@@ -520,9 +541,28 @@ export default function HomePage() {
     setError(null);
     setDiagramSource('blank');
     setBlankTrigger((prev) => prev + 1);
-  }, [isDirty]);
+  }, []);
 
-  const generateDiagram = async (requestedMode?: 'fresh' | 'preserve-edits') => {
+  const handleCreateBlank = useCallback(() => {
+    if (isDirty) {
+      setConfirmDialog({
+        title: '¿Iniciar un lienzo en blanco?',
+        description:
+          'Tenés modificaciones manuales en el diagrama actual. Al abrir un lienzo vacío se perderán esos cambios.',
+        confirmLabel: 'Descartar e iniciar en blanco',
+        cancelLabel: 'Seguir editando',
+        tone: 'danger',
+        onConfirm: () => {
+          setConfirmDialog(null);
+          applyCreateBlank();
+        },
+      });
+      return;
+    }
+    applyCreateBlank();
+  }, [applyCreateBlank, isDirty]);
+
+  const generateDiagram = async (requestedMode?: 'fresh' | 'preserve-edits', skipConfirm = false) => {
     if (!isValidLength || loading) {
       if (!isValidLength) {
         setError('Ingresá una descripción de entre 10 y 4.000 caracteres.');
@@ -533,11 +573,22 @@ export default function HomePage() {
     const iterationMode: 'fresh' | 'preserve-edits' =
       requestedMode ?? (isDirty ? 'preserve-edits' : 'fresh');
 
-    if (iterationMode === 'fresh' && isDirty) {
-      const ok = window.confirm(
-        'Tenés cambios manuales en el diagrama actual. ¿Querés descartarlos y regenerar desde cero?'
-      );
-      if (!ok) return;
+    if (iterationMode === 'fresh' && isDirty && !skipConfirm) {
+      setConfirmDialog({
+        title: '¿Regenerar el diagrama desde cero?',
+        description:
+          'Esta acción descartará todas las modificaciones manuales realizadas en el lienzo y construirá un modelo nuevo a partir del texto.',
+        detail:
+          'Tip: si querés conservar tus ajustes visuales, usá el botón «Refinar conservando mis ediciones».',
+        confirmLabel: 'Descartar y regenerar',
+        cancelLabel: 'Seguir editando',
+        tone: 'danger',
+        onConfirm: () => {
+          setConfirmDialog(null);
+          void generateDiagram('fresh', true);
+        },
+      });
+      return;
     }
 
     setLoading(true);
@@ -1314,6 +1365,18 @@ export default function HomePage() {
         open={tourOpen}
         onClose={() => setTourOpen(false)}
         onBeforeStep={handleBeforeTourStep}
+      />
+
+      <ConfirmDialog
+        open={confirmDialog !== null}
+        title={confirmDialog?.title ?? ''}
+        description={confirmDialog?.description ?? ''}
+        detail={confirmDialog?.detail}
+        confirmLabel={confirmDialog?.confirmLabel ?? 'Confirmar'}
+        cancelLabel={confirmDialog?.cancelLabel}
+        tone={confirmDialog?.tone}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
       />
 
       {toast && (
